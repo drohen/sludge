@@ -6,3 +6,4 @@ sludge_nginx.conf
 ui/node_modules
 ui/public/env.js
 config/
+node_modules

@@ -1,369 +1,168 @@
-import {
-    serve,
-    ServerRequest,
-    Response
-} from "https://deno.land/std/http/server.ts"
-import { v4 } from "https://deno.land/std/uuid/mod.ts"
-import { Segment, Hub } from "./common/interfaces.ts"
+import { serve, Server, ServerRequest } from "https://deno.land/std/http/server.ts"
 import * as sqlite from "https://deno.land/x/sqlite/mod.ts"
-import { initDb, DBActions, getDBActions } from "./db.ts"
-import { handleForm } from "./upload.ts"
-import { createStream, getStream } from "./stream.ts"
-import { addHub, getHubs, removeHub } from "./hub.ts"
+import { DBInterface, DBActionsProvider } from "./db.ts"
+import { RequestHandler, RequestsActionsProvider, RequestsDataProvider, RequestsUUIDProvider, UserStreamData } from "./requestHandler.ts"
+import { StreamHandler, StreamCoreProvider, StreamDataProvider, StreamUUIDProvider, Stream } from "./streamHandler.ts"
+import { UploadCoreProvider, UploadDataProvider, UploadFormHandler, UploadRandomProvider } from "./uploadFormHandler.ts"
+import { HubCoreProvider, HubDataProvider, HubHandler } from "./hubHandler.ts"
+import { Random } from "./random.ts"
 
-// TODO: add doc
-export interface MainFnArgs {
-    publicUrl: string
-    port: string
-    rootDir: string
-    dbPath: string
-    fileUrl: string
-}
+export type RandomProvider = 
+	& DBActionsProvider
+	& UploadRandomProvider
+	& RequestsUUIDProvider
+	& StreamUUIDProvider
 
-// TODO: add doc
-interface HandleGetFnArgs {
-    req: ServerRequest
-    dbActions: DBActions
-    publicUrl: string
-}
+export type DataProvider = 
+	& RequestsDataProvider
+	& StreamDataProvider
+	& UploadDataProvider
+	& HubDataProvider
 
-// TODO: add doc
-interface HandlePostFnArgs {
-    req: ServerRequest
-    dbActions: DBActions
-    rootDir: string
-    publicUrl: string
-    fileUrl: string
-}
+export class Main 
+implements
+	RequestsActionsProvider, 
+	StreamCoreProvider,
+	UploadCoreProvider,
+	HubCoreProvider
+{
+	private db: sqlite.DB
 
-// TODO: add doc
-interface HandlePutFnArgs {
-    req: ServerRequest
-    dbActions: DBActions
-    publicUrl: string
-}
+	private server: Server
 
-// TODO: add doc
-interface HandleDeleteFnArgs {
-    req: ServerRequest
-    dbActions: DBActions
-}
+	private requestHandler: RequestHandler
+	
+	private streamHandler: StreamHandler
 
-// TODO: add doc
-interface HandleReqFn {
-    req: ServerRequest
-    dbActions: DBActions
-    rootDir: string
-    publicUrl: string
-    fileUrl: string
-}
+	private uploadHandler: UploadFormHandler
 
-/**
- * GET requests
- *
- * `/<alias>/hubs` -> fetch stream hub list
- *
- * `/<alias>/admin` -> fetch stream info
- *
- * `/<id>` -> fetch stream playlist
- *
- * `/<id>/<segment id>` -> fetch stream playlist after segment
- */
-async function handleGet({
-    dbActions,
-    publicUrl,
-    req
-}: HandleGetFnArgs): Promise<Response> {
-    const path: string[] = req.url.split("/")
-    try {
-        if (!v4.validate(path[1])) {
-            throw Error("Invalid path")
-        }
+	private hubHandler: HubHandler
 
-        const headers = new Headers()
-        headers.set("content-type", "application/json")
+	private encoder: TextEncoder
 
-        // /<stream alias>/hubs
-        if (path[2] === "hubs") {
-            const hubs: Hub[] | undefined = await getHubs({
-                dbActions,
-                streamAlias: path[1]
-            })
-            return {
-                body: new TextEncoder().encode( !hubs ? "" :
-                    JSON.stringify(
-                        hubs.map((hub) => ({ id: hub.id, url: hub.url }))
-                    )
-                ),
-                status: 200,
-                headers
-            }
-        } else if (path[2] === "admin") {
-            return {
-                body: new TextEncoder().encode(
-                    JSON.stringify(
-                        await getStream({
-                            alias: path[1],
-                            dbActions,
-                            publicUrl
-                        })
-                    )
-                ),
-                status: 200,
-                headers
-            }
-        } else {
-            // return playlist
-            // /<stream id>/<segment?>
-            const idList = await dbActions.getSegments({
-                streamId: path[1],
-                segmentId: v4.validate(path[2]) ? path[2] : undefined
-            })
+	private decoder: TextDecoder
 
-            return {
-                body: new TextEncoder().encode(!idList ? "" : JSON.stringify(idList)),
-                status: 200,
-                headers
-            }
-        }
-    } catch (e) {
-        return {
-            body: new TextEncoder().encode(e.message),
-            status: 404
-        }
-    }
-}
+	private dbAPI: DBInterface
 
-/**
- * POST request
- *
- * `/<alias>` -> upload audio
- *
- * `/stream` -> create new stream
- */
-async function handlePost({
-    dbActions,
-    fileUrl,
-    publicUrl,
-    req,
-    rootDir
-}: HandlePostFnArgs): Promise<Response> {
-    const path: string[] = req.url.split("/")
+	private random: Random
 
-    try {
-        if (path[1] === "stream") {
-            // create stream id
-            return await createStream({ dbActions, rootDir, publicUrl })
-        }
+	constructor(
+		private _publicURL: URL,
+		private port: number,
+		private _rootDir: string,
+		private dbPath: string,
+		private _fileURL: URL
+	)
+	{
+		this.random = new Random()
 
-        if (!v4.validate(path[1])) {
-            throw Error("Invalid path")
-        }
+		this.db = new sqlite.DB( this.dbPath )
 
-        // /<stream alias>
-        // post adds file
-        // need to match uuid in KV
-        return await handleForm({
-            req,
-            dbActions,
-            rootDir,
-            fileUrl,
-            alias: path[1]
-        })
-    } catch (e) {
-        return {
-            body: new TextEncoder().encode(e.message),
-            status: 404
-        }
-    }
-}
+		this.dbAPI = new DBInterface( this.db, this.random )
 
-/**
- * PUT reqest
- *
- * `/<alias>/admin` -> add hub to stream
- */
-async function handlePut({
-    req,
-    dbActions,
-    publicUrl
-}: HandlePutFnArgs): Promise<Response> {
-    const path: string[] = req.url.split("/")
-    try {
-        if (!v4.validate(path[1]) || path[2] !== "admin") {
-            throw Error("Invalid path")
-        }
+		this.server = serve( `0.0.0.0:${this.port}` )
 
-        if (!req.contentLength) {
-            throw Error("No data")
-        }
+		this.requestHandler = new RequestHandler( this, this.dbAPI, this.random )
 
-        const hubUrl: string = new TextDecoder().decode(
-            await Deno.readAll(req.body)
-        )
+		this.streamHandler = new StreamHandler( this, this.dbAPI, this.random )
 
-        // /<stream alias>
-        // get hub url from body
-        const hub = await addHub({
-            dbActions,
-            hubUrl,
-            publicUrl,
-            streamAlias: path[1]
-        })
+		this.uploadHandler = new UploadFormHandler( this, this.dbAPI, this.random )
 
-        return {
-            body: new TextEncoder().encode(!hub ? "" : hub.id),
-            status: 200
-        }
-    } catch (e) {
-        return {
-            body: new TextEncoder().encode(e.message),
-            status: 404
-        }
-    }
-}
+		this.hubHandler = new HubHandler( this, this.dbAPI )
 
-/**
- * DELETE reqest
- *
- * `/<alias>/admin` -> rm hub from stream
- */
-async function handleDelete({
-    req,
-    dbActions
-}: HandleDeleteFnArgs): Promise<Response> {
-    const path: string[] = req.url.split("/")
-    try {
-        if (!v4.validate(path[1]) || path[2] !== "admin") {
-            throw Error("Invalid path")
-        }
+		this.encoder = new TextEncoder()
 
-        if (!req.contentLength) {
-            throw Error("No data")
-        }
+		this.decoder = new TextDecoder()
+	}
 
-        const id: string = new TextDecoder().decode(
-            await Deno.readAll(req.body)
-        )
+	// return public path for upload/ UI/ public stream
+	private streamToUserStreamData( stream: Stream ): UserStreamData
+	{
+		return {
+			admin: new URL( `${stream.alias}/admin`, this._publicURL ).toString(),
+			download: new URL( stream.id, this._publicURL ).toString(),
+			hub: new URL( `${stream.alias}/hubs`, this._publicURL ).toString()
+		}
+	}
 
-        // /<stream alias>
-        // get hub id from body
-        await removeHub({
-            dbActions,
-            id,
-            streamAlias: path[1]
-        })
+	private close()
+	{
+		this.db.close()
 
-        return {
-            status: 200
-        }
-    } catch (e) {
-        return {
-            body: new TextEncoder().encode(e.message),
-            status: 404
-        }
-    }
-}
+		this.server.close()
+	}
 
-// TODO: add docs
-/**
- * path to get stream create UI
- * path to create stream id
- * path to upload audio segments
- * path to get id playlist
- * add/remove/get hubs
- */
-// nginx static routes
-// if /stream
-// get 2 = uuid, return splutter for streaming ui
-// need to match uuid in KV
-// if /
-// get ui to create stream
-// if /audio/streamId/segmentId
-// let nginx return audio files from dir
-async function handleReq({
-    dbActions,
-    fileUrl,
-    publicUrl,
-    req,
-    rootDir
-}: HandleReqFn): Promise<Response> {
-    switch (req.method) {
-        case "GET":
-            return await handleGet({ req, dbActions, publicUrl })
-        case "POST":
-            return await handlePost({
-                req,
-                dbActions,
-                rootDir,
-                publicUrl,
-                fileUrl
-            })
-        case "PUT":
-            return await handlePut({ dbActions, publicUrl, req })
-        case "DELETE":
-            return await handleDelete({ dbActions, req })
-        case "OPTIONS":
-            return { status: 200 }
-        default:
-            return {
-                body: new TextEncoder().encode("This is not a valid request."),
-                status: 400
-            }
-    }
-}
+	public encodeText( text: string ): Uint8Array
+	{
+		return this.encoder.encode( text )
+	}
 
-// TODO: add doc
-// TODO: move to nginx?
-// required for streaming requests
-function setCORS(res: Response): Response {
-    if (!res.headers) {
-        res.headers = new Headers()
-    }
-    res.headers.append("access-control-allow-origin", "*")
-    res.headers.append("access-control-allow-method", "GET")
-    res.headers.append(
-        "access-control-allow-headers",
-        "Origin, X-Requested-With, Content-Type, Accept, Range"
-    )
-    return res
-}
+	public decodeText( binary: Uint8Array ): string
+	{
+		return this.decoder.decode( binary )
+	}
 
-// TODO: add doc
-/**
- *
- * @param publicUrl where app is accessed from
- * @param port run on local port
- * @param rootDir app data dir
- * @param dbPath path to db file
- * @param filesUrl public base url for audio files
- */
-export async function main({
-    dbPath,
-    fileUrl,
-    port,
-    publicUrl,
-    rootDir
-}: MainFnArgs): Promise<void> {
-    const db: sqlite.DB = new sqlite.DB(dbPath)
-    const dbActions: DBActions = getDBActions(initDb(db))
-    const server = serve(`0.0.0.0:${port}`)
+	public async run(): Promise<void>
+	{
+		try 
+		{
+			for await ( const req of this.server ) 
+			{
+				await this.requestHandler.handle( req )
+			}
+	
+			this.close()
+		}
+		catch ( e ) 
+		{
+			this.close()
 
-    try {
-        for await (const req of server) {
-            req.respond(
-                setCORS(
-                    await handleReq({ req, dbActions, rootDir, publicUrl, fileUrl })
-                )
-            )
-        }
-    
-        db.close()
-        server.close()
-    } catch (e) {
-        db.close()
-        server.close()
+			throw e
+		}
+	}
 
-        throw e
-    }
+	public async createStream(): Promise<UserStreamData>
+	{
+		return this.streamToUserStreamData( await this.streamHandler.create() )
+	}
+
+	public async fetchStream( streamAlias: string ): Promise<UserStreamData>
+	{
+		return this.streamToUserStreamData( await this.streamHandler.get( streamAlias ) )
+	}
+
+	public async processUploadFormData( request: ServerRequest, streamAlias: string ): Promise<void>
+	{
+		await this.uploadHandler.process( request, streamAlias )
+	}
+
+	public async connectStreamToHub( hubURL: URL, streamAlias: string ): Promise<void>
+	{
+		return await this.hubHandler.add( hubURL, streamAlias )
+	}
+
+	public async disconnectStreamFromHub( hubURL: URL, streamAlias: string ): Promise<void>
+	{
+		await this.hubHandler.remove( hubURL, streamAlias )
+	}
+
+	public async connectedHubs( streamAlias: string ): Promise<string[]>
+	{
+		return ( await this.hubHandler.get( streamAlias ) ).map( ( { url } ) => url )
+	}
+
+	public publicURL(): URL
+	{
+		return this._publicURL
+	}
+
+	public fileURL(): URL
+	{
+		return this._fileURL
+	}
+
+	public rootDir(): string
+	{
+		return this._rootDir
+	}
 }

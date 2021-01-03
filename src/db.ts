@@ -1,343 +1,385 @@
-import * as sqlite from "https://deno.land/x/sqlite/mod.ts"
-import { Stream, Hub, Segment, Resolve } from "./common/interfaces.ts"
+import type * as sqlite from "https://deno.land/x/sqlite/mod.ts"
+import type { Hub } from "./hubHandler.ts"
+import type { DataProvider } from "./main.ts"
+import type { Segment } from "./requestHandler.ts"
+import type { Stream } from "./streamHandler.ts"
 
-// TODO: add doc
-interface CreateStreamFnArgs {
-    id: string
-    alias: string
-}
-type CreateStreamFn = (args: CreateStreamFnArgs) => Promise<Stream | undefined>
-
-// TODO: add doc
-interface GetStreamFnArgs {
-    alias: string
-}
-type GetStreamFn = (args: GetStreamFnArgs) => Promise<Stream | undefined>
-
-// TODO: add doc
-interface GetSegmentsFnArgs {
-    streamId: string
-    segmentId?: string
-}
-type GetSegmentsFn = (args: GetSegmentsFnArgs) => Promise<Segment[] | undefined>
-
-// TODO: add doc
-interface AddSegmentFnArgs {
-    streamId: string
-    url: string
-    id: string
-}
-type AddSegmentFn = (args: AddSegmentFnArgs) => Promise<Segment | undefined>
-
-// TODO: add doc
-interface GetHubsFnArgs {
-    streamId: string
-}
-type GetHubsFn = (args: GetHubsFnArgs) => Promise<Hub[] | undefined>
-
-// TODO: add doc
-interface AddHubFnArgs {
-    id: string
-    streamId: string
-    url: string
-}
-type AddHubFn = (args: AddHubFnArgs) => Promise<Hub | undefined>
-
-// TODO: add doc
-interface RemoveHubFnArgs {
-    id: string
-    streamId: string
-}
-type RemoveHubFn = (args: RemoveHubFnArgs) => Promise<void>
-
-// TODO: add doc
-export interface DBActions {
-    createStream: CreateStreamFn
-    getStream: GetStreamFn
-    getSegments: GetSegmentsFn
-    addSegment: AddSegmentFn
-    getHubs: GetHubsFn
-    addHub: AddHubFn
-    removeHub: RemoveHubFn
+enum DataType 
+{
+	string = `TEXT`,
+	int = `INTEGER`
 }
 
-enum DT {
-    str = "TEXT",
-    int = "INTEGER"
+export interface DBActionsProvider
+{
+	random: ( min: number, max: number ) => Promise<number>
 }
 
-interface CreateTableQFnArgs {
-    table: string
-    values: [string, DT][]
-}
+export class DBInterface implements DataProvider
+{
+	private emptyList: []
 
-// TODO: add doc
-function createStream(db: sqlite.DB): CreateStreamFn {
-    return ({ alias, id }): Promise<Stream | undefined> => {
-        return new Promise((resolve: Resolve<Stream | undefined>): void => {
-            const stream: Stream = {
-                id,
-                alias,
-                created: Date.now()
-            }
+	constructor(
+		private db: sqlite.DB,
+		private random: DBActionsProvider
+	)
+	{
+		this.emptyList = []
 
-            db.query("INSERT INTO streams VALUES ($id, $alias, $created);", {
-                $id: stream.id,
-                $alias: stream.alias,
-                $created: stream.created
-            })
+		this.init()
+	}
 
-            resolve(stream)
-        })
-    }
-}
+	private createTableQuery( 
+		table: string,
+		values: [string, DataType][] 
+	): string 
+	{
+		return [
+			`CREATE TABLE IF NOT EXISTS`,
+			table,
+			`(${values.map( ( v ) => v.join( ` ` ) ).join( `, ` )})`
+		].join( ` ` )
+	}
 
-// TODO: add doc
-function getStream(db: sqlite.DB): GetStreamFn {
-    return ({ alias }): Promise<Stream | undefined> => {
-        return new Promise((resolve: Resolve<Stream | undefined>): void => {
-            const rows = db.query(
-                "SELECT id, alias, created FROM streams WHERE alias = $alias;",
-                { $alias: alias }
-            )
+	private init()
+	{
+		/**
+		 * id -> public access id for playlist/audio files
+		 * alias -> secret id for uploads/ streaming
+		 * created -> datetime stream was generated
+		 */
+		this.db.query(
+			this.createTableQuery(
+				`streams`,
+				[
+					[ `id`, DataType.string ],
+					[ `alias`, DataType.string ],
+					[ `created`, DataType.int ]
+				]
+			),
+			[]
+		)
+	
+		/**
+		 * id -> id returned from hub for future delete req
+		 * url -> hub url for finding the stream
+		 * streamID -> id of linked stream
+		 */
+		this.db.query(
+			this.createTableQuery(
+				`hubs`,
+				[
+					[ `url`, DataType.string ],
+					[ `streamID`, DataType.string ]
+				]
+			),
+			[]
+		)
+	
+		/**
+		 * id -> id for audio file segment retrieval
+		 * streamID -> id of linked stream
+		 * url -> public url for file request
+		 */
+		this.db.query(
+			this.createTableQuery(
+				`segments`,
+				[
+					[ `id`, DataType.string ],
+					[ `streamID`, DataType.string ],
+					[ `url`, DataType.string ]
+				]
+			),
+			[]
+		)
+	}
 
-            for (const row of rows) {
-                if (row) {
-                    resolve({
-                        id: row[0],
-                        alias: row[1],
-                        created: row[2]
-                    })
-                    return
-                }
-            }
+	private getStreamSegmentsByID( streamID: string, segmentID: string )
+	{
+		const segments: Segment[] = []
 
-            throw Error(`Did not find stream with alias ${alias}`)
-        })
-    }
-}
+		try 
+		{
+			const rows = this.db.query(
+				`SELECT id, streamID, url FROM segments WHERE streamID = $streamID AND rowid > (SELECT rowid FROM segments WHERE id = $segmentID) LIMIT 10;`,
+				{
+					$segmentID: segmentID,
+					$streamID: streamID
+				}
+			)
+	
+			for ( const row of rows ) 
+			{
+				if ( row ) 
+				{
+					const [ id, streamID, url ] = row
+	
+					segments.push( { id, streamID, url } )
+				}
+			}
+	
+			return segments
+		}
+		catch ( e )
+		{
+			throw Error( `Could not get segments for stream.` )
+		}
+	}
 
-// TODO: add doc
-function addHub(db: sqlite.DB): AddHubFn {
-    return ({ id, url, streamId }): Promise<Hub | undefined> => {
-        return new Promise((resolve: Resolve<Hub | undefined>): void => {
-            const hub: Hub = {
-                id,
-                url,
-                streamId
-            }
+	private async getStreamsSegmentsRandom( streamID: string )
+	{
+		const count = this.streamSegmentsCount( streamID )
 
-            db.query("INSERT INTO hubs VALUES ($id, $url, $streamId);", {
-                $id: hub.id,
-                $url: hub.url,
-                $streamId: hub.streamId
-            })
+		if ( !count ) 
+		{
+			return this.emptyList
+		}
+		
+		/**
+		 * If there are more than 10 segments, set offset index to some number
+		 * between 0 and total segments - 9, to ensure there's always 10
+		 * segment URLs being returned.
+		 * 
+		 * Less than 10 segments, just return everything
+		 */
+		const offset = count > 10
+			? this.random.random( 0, count - 9 )
+			: 0
 
-            resolve(hub)
-        })
-    }
-}
+		try 
+		{
+			return this.db.query(
+				`SELECT id, streamID, url FROM segments WHERE streamID = $streamID LIMIT 10 OFFSET $offset;`,
+				{
+					$streamID: streamID,
+					$offset: offset
+				}
+			)
+		}
+		catch ( e )
+		{
+			throw Error( `Could not get segments for stream.` )
+		}
+	}
 
-// TODO: add doc
-function removeHub(db: sqlite.DB): RemoveHubFn {
-    return ({ id, streamId }): Promise<void> => {
-        return new Promise((resolve: Resolve<void>): void => {
-            db.query(
-                "DELETE FROM hubs WHERE id = $id AND streamId = $streamId;",
-                {
-                    $id: id,
-                    $streamId: streamId
-                }
-            )
+	private getStreamSegmentsStart( streamID: string )
+	{
+		try 
+		{
+			return this.db.query(
+				`SELECT id, streamID, url FROM segments WHERE streamID = $streamID LIMIT 10;`,
+				{
+					$streamID: streamID
+				}
+			)
+		}
+		catch ( e )
+		{
+			throw Error( `Could not get segments for stream.` )
+		}
+	}
 
-            resolve()
-        })
-    }
-}
+	private streamSegmentsCount( streamID: string )
+	{
+		const count = this.db.query(
+			`SELECT COUNT(*) FROM segments WHERE streamID = $streamID;`,
+			{
+				$streamID: streamID
+			}
+		)
 
-// TODO: add doc
-function getHubs(db: sqlite.DB): GetHubsFn {
-    return ({ streamId }): Promise<Hub[] | undefined> => {
-        return new Promise((resolve: Resolve<Hub[] | undefined>): void => {
-            const hubs: Hub[] = []
+		if ( !count ) 
+		{
+			return 0
+		}
 
-            const rows = db.query(
-                "SELECT id, url, streamId FROM hubs WHERE streamId = $streamId;",
-                { $streamId: streamId }
-            )
+		const value = count.next().value
 
-            for (const row of rows) {
-                if (row)
-                    hubs.push({ id: row[0], url: row[1], streamId: row[2] })
-            }
+		return value && value[ 0 ] ? value[ 0 ] : 0
+	}
 
-            resolve(hubs)
-        })
-    }
-}
+	private async selectStreamSegmentsFromRandomOrStart( streamID: string, type: `random` | `start` = `random` )
+	{
+		switch( type )
+		{
+			case `start`:
 
-// TODO: add doc
-function addSegment(db: sqlite.DB): AddSegmentFn {
-    return ({ streamId, url, id }): Promise<Segment | undefined> => {
-        return new Promise((resolve: Resolve<Segment | undefined>): void => {
-            const segment: Segment = {
-                id,
-                streamId,
-                // base url should finish with /
-                url
-            }
+				return this.getStreamSegmentsStart( streamID )
 
-            db.query("INSERT INTO segments VALUES ($id, $streamId, $url);", {
-                $id: segment.id,
-                $streamId: segment.streamId,
-                $url: segment.url
-            })
+			case `random`:
 
-            resolve(segment)
-        })
-    }
-}
+				return await this.getStreamsSegmentsRandom( streamID )
 
-// TODO: add doc
-function getSegments(db: sqlite.DB): GetSegmentsFn {
-    return ({ streamId, segmentId }): Promise<Segment[] | undefined> => {
-        return new Promise((resolve: Resolve<Segment[] | undefined>): void => {
-            // if segment id, return all after segment ID
-            const segments: Segment[] = []
+		}
+	}
 
-            if (segmentId) {
-                const rows = db.query(
-                    "SELECT id, streamId, url FROM segments WHERE streamId = $streamId AND rowid > (SELECT rowid FROM segments WHERE id = $segmentId) LIMIT 10;",
-                    {
-                        $segmentId: segmentId,
-                        $streamId: streamId
-                    }
-                )
+	public async getSegmentList( streamID: string, segmentID?: string, type: `random` | `start` = `random` ): Promise<Segment[]>
+	{
+		if ( segmentID ) 
+		{
+			// if segment id, return all after segment ID
+			return this.getStreamSegmentsByID( streamID, segmentID )
+		}
+		else 
+		{
+			const rows = await this.selectStreamSegmentsFromRandomOrStart( streamID, type )
 
-                for (const row of rows) {
-                    if (row) {
-                        const [id, streamId, url] = row
-                        segments.push({ id, streamId, url })
-                    }
-                }
-            } else {
-                // if none, get length
-                const count = db.query(
-                    "SELECT COUNT(*) FROM segments WHERE streamId = $streamId;",
-                    {
-                        $streamId: streamId
-                    }
-                )
+			const segments: Segment[] = []
 
-                if (!count) {
-                    resolve([])
-                    return
-                }
+			for ( const row of rows ) 
+			{
+				if ( row ) 
+				{
+					const [ id, streamID, url ] = row
 
-                const value = count.next().value
+					segments.push( { id, streamID, url } )
+				}
+			}
 
-                const length = value ? value[0] : 0
+			return segments
+		}
+	}
 
-                if (!length) {
-                    resolve([])
-                    return
-                }
+	public async getStream( streamAlias: string ): Promise<Stream>
+	{
+		const rows = this.db.query(
+			`SELECT id, alias, created FROM streams WHERE alias = $alias;`,
+			{ $alias: streamAlias }
+		)
 
-                const rows = db.query(
-                    "SELECT id, streamId, url FROM segments WHERE streamId = $streamId LIMIT 10 OFFSET $offset;",
-                    {
-                        $streamId: streamId,
-                        $offset:
-                            length > 10 ? ~~(Math.random() * (length - 9)) : 0
-                    }
-                )
+		for ( const row of rows ) 
+		{
+			if ( row ) 
+			{
+				return {
+					id: row[ 0 ],
+					alias: row[ 1 ],
+					created: row[ 2 ]
+				}
+			}
+		}
 
-                for (const row of rows) {
-                    if (row) {
-                        const [id, streamId, url] = row
-                        segments.push({ id, streamId, url })
-                    }
-                }
-            }
+		throw Error( `Stream not found.` )
+	}
 
-            resolve(segments)
-        })
-    }
-}
+	public async createStream( id: string, streamAlias: string ): Promise<Stream>
+	{
+		try 
+		{	
+			this.db.query( 
+				`INSERT INTO streams VALUES ($id, $alias, $created);`, 
+				{
+					$id: id,
+					$alias: streamAlias,
+					$created: Date.now()
+				} )
+		}
+		catch ( e )
+		{
+			// TODO: log error
 
-function createTableQ({ table, values }: CreateTableQFnArgs): string {
-    return [
-        `CREATE TABLE IF NOT EXISTS`,
-        table,
-        `(${values.map((v) => v.join(" ")).join(", ")})`
-    ].join(" ")
-}
+			throw Error( `Failed to create stream.` )
+		}
 
-// TODO: add doc
-export function initDb(db: sqlite.DB): sqlite.DB {
-    /**
-     * id -> public access id for playlist/audio files
-     * alias -> secret id for uploads/ streaming
-     * created -> datetime stream was generated
-     */
-    db.query(
-        createTableQ({
-            table: "streams",
-            values: [
-                ["id", DT.str],
-                ["alias", DT.str],
-                ["created", DT.int]
-            ]
-        }),
-        []
-    )
+		const stream = await this.getStream( streamAlias )
 
-    /**
-     * id -> id returned from hub for future delete req
-     * url -> hub url for finding the stream
-     * streamId -> id of linked stream
-     */
-    db.query(
-        createTableQ({
-            table: "hubs",
-            values: [
-                ["id", DT.str],
-                ["url", DT.str],
-                ["streamId", DT.str]
-            ]
-        }),
-        []
-    )
+		if ( !stream )
+		{
+			throw Error( `Could not create stream.` )
+		}
 
-    /**
-     * id -> id for audio file segment retrieval
-     * streamId -> id of linked stream
-     * url -> public url for file request
-     */
-    db.query(
-        createTableQ({
-            table: "segments",
-            values: [
-                ["id", DT.str],
-                ["streamId", DT.str],
-                ["url", DT.str]
-            ]
-        }),
-        []
-    )
+		return stream
+	}
 
-    return db
-}
+	public async addSegmentURL( id: string, streamID: string, url: URL ): Promise<void>
+	{
+		try 
+		{
+			this.db.query( 
+				`INSERT INTO segments VALUES ($id, $streamID, $url);`, 
+				{
+					$id: id,
+					$streamID: streamID,
+					$url: url
+				} )
+		}
+		catch ( e )
+		{
+			// TODO: log error
 
-// TODO: add doc
-export function getDBActions(db: sqlite.DB): DBActions {
-    return {
-        createStream: createStream(db),
-        getStream: getStream(db),
-        getHubs: getHubs(db),
-        addHub: addHub(db),
-        removeHub: removeHub(db),
-        getSegments: getSegments(db),
-        addSegment: addSegment(db)
-    }
+			throw Error( `Failed to add segment.` )
+		}
+	}
+
+	public async getIDFromStreamAlias( streamAlias: string ): Promise<string>
+	{
+		const stream = await this.getStream( streamAlias )
+
+		if ( !stream || !stream.id ) 
+		{
+			throw Error( `Stream not found.` )
+		}
+
+		return stream.id
+	}
+
+	public async getConnectedHubs( streamID: string ): Promise<Hub[]>
+	{
+		const hubs: Hub[] = []
+
+		try 
+		{
+			const rows = this.db.query(
+				`SELECT url, streamID FROM hubs WHERE streamID = $streamID;`,
+				{ $streamID: streamID }
+			)
+
+			for ( const row of rows ) 
+			{
+				if ( row )
+					hubs.push( { url: row[ 0 ], streamID: row[ 1 ] } )
+			}
+
+			return hubs
+		}
+		catch ( e )
+		{
+			// TODO: log error
+
+			throw Error( `Could not get hubs for stream.` )
+		}
+	}
+
+	public async connectHubToStream( streamID: string, hubURL: URL ): Promise<void>
+	{
+		try
+		{
+			this.db.query( `INSERT INTO hubs VALUES ($url, $streamID);`, {
+				$url: hubURL.toString(),
+				$streamID: streamID
+			} )
+		}
+		catch ( e )
+		{
+			throw Error( `Failed to add hub URL to stream.` )
+		}
+	}
+
+	public async disconnectHubFromStream( streamID: string, hubURL: URL ): Promise<void>
+	{
+		try
+		{
+			this.db.query(
+				`DELETE FROM hubs WHERE id = $id AND streamID = $streamID;`,
+				{
+					$id: hubURL.toString(),
+					$streamID: streamID
+				}
+			)
+		}
+		catch ( e )
+		{
+			throw Error( `Failed to remove hub URL from stream.` )
+		}
+	}
 }

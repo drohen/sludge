@@ -1,32 +1,13 @@
-# sludge &bull; web audio streams
+# sludge
 
-experimental live streaming server
-
-## Summary
-
-This project is a component of [\_noisecrypt](low.show/noisecrypt/). The component acts as the streaming server where recorded audio is live streamed to, and then served from to be consumed by a compatible system. Streams are created via the sludge UI (or API) and can be added to a [sortition](https://github.com/lowshow/sortition) hub using the same UI. The recording/encoding interface is part of the [splutter](https://github.com/lowshow/splutter) component. The decoding/playback interface is part of the [syllid](https://github.com/lowshow/syllid) component.
-
-### Component communication
-
--   sludge communicates information to splutter via local storage, due to shared root domain
--   sortition hub urls are copied into "add hub" section of the sludge admin UI
+live audio streaming server
 
 ## Install
 
--   Download [deno](https://deno.land/) (tested with v1.1.0)
+-   Download [deno](https://deno.land/) (tested with v1.6.3)
 
 ## Setup
 
-### UI
-
--   Add env data for the UI, in a file at: `ui/public/env.js`
-
-```javascript
-export const env = () => ({
-    mode: "live",
-    streamUI: "https://some.url/splutter"
-})
-```
 
 ### API
 
@@ -77,11 +58,3 @@ SLUDGE_PUBLIC="http://some.url/" SLUDGE_FILES="http://some.url/audio/" SLUDGE_PO
 ```
 
 NOTE: trailing slash should be included at the end of the URLs
-
-#### UI
-
-```shell
-cd ui
-npm i
-npm run dev
-```
