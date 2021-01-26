@@ -4,9 +4,9 @@ import { join } from "https://deno.land/std/path/mod.ts"
 
 export interface UploadDataProvider
 {
-	addSegmentURL: ( id: string, streamID: string, url: URL ) => Promise<void>
+	addSegmentURL: ( segmentID: string, streamPublicID: string, segmentURL: URL ) => Promise<void>
 
-	getIDFromStreamAlias: ( streamAlias: string ) => Promise<string>
+	getStreamPublicIDFromStreamAdminID: ( streamAdminID: string ) => Promise<string>
 }
 
 export interface UploadRandomProvider
@@ -30,7 +30,7 @@ export class UploadFormHandler
 	)
 	{}
 
-	public async process( req: ServerRequest, streamAlias: string ): Promise<void> 
+	public async process( req: ServerRequest, streamAdminID: string ): Promise<void> 
 	{
 		const contentType: string | null = req.headers.get( `content-type` )
 
@@ -39,7 +39,7 @@ export class UploadFormHandler
 			throw Error( `Missing content type header\n` )
 		}
 
-		const streamID = await this.data.getIDFromStreamAlias( streamAlias )
+		const streamPublicID = await this.data.getStreamPublicIDFromStreamAdminID( streamAdminID )
 
 		// boundaries are used to communicate request data structure
 		// https://www.w3.org/TR/html401/interact/forms.html#h-17.13.4.2
@@ -58,9 +58,9 @@ export class UploadFormHandler
 		// we have the file data, connection can close now
 		if ( !formFile || Array.isArray( formFile ) || !formFile.content ) return
 
-		const id = await this.random.uuid()
+		const segmentID = await this.random.uuid()
 
-		const fileLocation = join( streamID, `${id}.opus` )
+		const fileLocation = join( streamPublicID, `${segmentID}.opus` )
 
 		const file = await Deno.open( 
 			join( this.core.rootDir(), `audio`, fileLocation ), 
@@ -78,14 +78,14 @@ export class UploadFormHandler
 		try 
 		{
 			await this.data.addSegmentURL(
-				id,
-				streamID,
+				segmentID,
+				streamPublicID,
 				new URL( fileLocation, this.core.fileURL() )
 			)
 		}
 		catch ( e )
 		{
-			console.error( `Failed to create segment entry ${id} for ${streamID}` )
+			console.error( `Failed to create segment entry ${segmentID} for ${streamPublicID}` )
 		}
 	}
 }

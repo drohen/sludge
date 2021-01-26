@@ -1,9 +1,3 @@
-.vscode
-out/
-typings/deno.d.ts
 .DS_Store
-sludge_nginx.conf
-ui/node_modules
-ui/public/env.js
-config/
+test/
 node_modules

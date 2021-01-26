@@ -2,16 +2,16 @@ import * as path from "https://deno.land/std/path/mod.ts"
 
 export interface Stream 
 {
-	id: string
-	alias: string
+	publicID: string
+	adminID: string
 	created: number
 }
 
 export interface StreamDataProvider
 {
-	getStream: ( streamAlias: string ) => Promise<Stream>
+	getStream: ( adminID: string ) => Promise<Stream>
 
-	createStream: ( id: string, streamAlias: string ) => Promise<Stream>
+	createStream: ( publicID: string, adminID: string ) => Promise<Stream>
 }
 
 export interface StreamCoreProvider
@@ -34,23 +34,25 @@ export class StreamHandler
 	{}
 
 	// TODO: add docs
-	public async get( streamAlias: string ): Promise<Stream> 
+	public async get( adminID: string ): Promise<Stream> 
 	{
-		return await this.data.getStream( streamAlias )
+		return await this.data.getStream( adminID )
 	}
 
 	public async create(): Promise<Stream>
 	{
-		const id: string = await this.random.uuid()
+		// Used for public access to stream segments list, segment files (dir)
+		const publicID: string = await this.random.uuid()
 
-		const streamAlias: string = await this.random.uuid()
+		// Used for owner to add segments, get admin info, add/remove hubs
+		const adminID: string = await this.random.uuid()
 
-		// create dir
-		const dirPath: string = path.join( this.core.rootDir(), `audio`, id )
+		// create dir for storing segment files for public access
+		const dirPath: string = path.join( this.core.rootDir(), `audio`, publicID )
 
-		await Deno.mkdir( dirPath, { recursive: true } )
+		await Deno.mkdir( dirPath )
 
-		// add alias/id to file/store
-		return await this.data.createStream( id, streamAlias )
+		// add admin id/public id to file/store
+		return await this.data.createStream( publicID, adminID )
 	}
 }

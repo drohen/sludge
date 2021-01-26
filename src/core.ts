@@ -19,7 +19,7 @@ export type DataProvider =
 	& UploadDataProvider
 	& HubDataProvider
 
-export class Main 
+export class Core 
 implements
 	RequestsActionsProvider, 
 	StreamCoreProvider,
@@ -76,12 +76,12 @@ implements
 	}
 
 	// return public path for upload/ UI/ public stream
-	private streamToUserStreamData( stream: Stream ): UserStreamData
+	private getStreamData( stream: Stream ): UserStreamData
 	{
 		return {
-			admin: new URL( `${stream.alias}/admin`, this._publicURL ).toString(),
-			download: new URL( stream.id, this._publicURL ).toString(),
-			hub: new URL( `${stream.alias}/hubs`, this._publicURL ).toString()
+			admin: new URL( `${stream.adminID}/admin`, this._publicURL ).toString(),
+			download: new URL( stream.publicID, this._publicURL ).toString(),
+			hub: new URL( `${stream.adminID}/hubs`, this._publicURL ).toString()
 		}
 	}
 
@@ -123,32 +123,32 @@ implements
 
 	public async createStream(): Promise<UserStreamData>
 	{
-		return this.streamToUserStreamData( await this.streamHandler.create() )
+		return this.getStreamData( await this.streamHandler.create() )
 	}
 
-	public async fetchStream( streamAlias: string ): Promise<UserStreamData>
+	public async fetchStream( adminID: string ): Promise<UserStreamData>
 	{
-		return this.streamToUserStreamData( await this.streamHandler.get( streamAlias ) )
+		return this.getStreamData( await this.streamHandler.get( adminID ) )
 	}
 
-	public async processUploadFormData( request: ServerRequest, streamAlias: string ): Promise<void>
+	public async processUploadFormData( request: ServerRequest, adminID: string ): Promise<void>
 	{
-		await this.uploadHandler.process( request, streamAlias )
+		await this.uploadHandler.process( request, adminID )
 	}
 
-	public async connectStreamToHub( hubURL: URL, streamAlias: string ): Promise<void>
+	public async connectStreamToHub( hubURL: URL, adminID: string ): Promise<void>
 	{
-		return await this.hubHandler.add( hubURL, streamAlias )
+		return await this.hubHandler.add( hubURL, adminID )
 	}
 
-	public async disconnectStreamFromHub( hubURL: URL, streamAlias: string ): Promise<void>
+	public async disconnectStreamFromHub( hubID: string, adminID: string ): Promise<void>
 	{
-		await this.hubHandler.remove( hubURL, streamAlias )
+		await this.hubHandler.remove( hubID, adminID )
 	}
 
-	public async connectedHubs( streamAlias: string ): Promise<string[]>
+	public async connectedHubs( adminID: string ): Promise<string[]>
 	{
-		return ( await this.hubHandler.get( streamAlias ) ).map( ( { url } ) => url )
+		return ( await this.hubHandler.get( adminID ) ).map( ( { hubURL: url } ) => url )
 	}
 
 	public publicURL(): URL

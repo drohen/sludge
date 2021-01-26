@@ -9,14 +9,14 @@ export interface UserStreamData
 
 export interface Segment
 {
-	id: string
-	streamID: string
-	url: string
+	segmentID: string
+	streamPublicID: string
+	segmentURL: string
 }
 
 export interface RequestsDataProvider
 {
-	getSegmentList: ( streamID: string, segmentID?: string ) => Promise<Segment[]>
+	getSegmentList: ( streamPublicID: string, segmentID?: string ) => Promise<Segment[]>
 }
 
 export interface RequestsUUIDProvider
@@ -24,24 +24,19 @@ export interface RequestsUUIDProvider
 	validateUUID: ( uuid: string ) => boolean
 }
 
-/**
- * streamAlias = stream admin ID used to manage/access stream data
- */
 export interface RequestsActionsProvider
 {
 	createStream: () => Promise<UserStreamData>
 
-	fetchStream: ( streamAlias: string ) => Promise<UserStreamData>
+	fetchStream: ( streamAdminID: string ) => Promise<UserStreamData>
 
-	processUploadFormData: ( request: ServerRequest, streamAlias: string ) => Promise<void>
+	processUploadFormData: ( request: ServerRequest, streamAdminID: string ) => Promise<void>
 
-	// should throw if couldn't create hub
-	// return hub id
-	connectStreamToHub: ( hubURL: URL, streamAlias: string ) => Promise<void> 
+	connectStreamToHub: ( hubURL: URL, streamAdminID: string ) => Promise<void> 
 
-	disconnectStreamFromHub: ( hubURL: URL, streamAlias: string ) => Promise<void>
+	disconnectStreamFromHub: ( hubID: string, streamAdminID: string ) => Promise<void>
 
-	connectedHubs: ( streamAlias: string ) => Promise<string[]>
+	connectedHubs: ( streamAdminID: string ) => Promise<string[]>
 
 	encodeText: ( text: string ) => Uint8Array
 
@@ -61,7 +56,7 @@ export class RequestHandler
 	/**
 	 * POST request
 	 *
-	 * `/<alias>` -> upload audio
+	 * `/<stream admin id>` -> upload audio
 	 *
 	 * `/stream` -> create new stream
 	 */
@@ -93,7 +88,7 @@ export class RequestHandler
 				throw Error( `Invalid path` )
 			}
 
-			// /<stream alias>
+			// /<stream admin id>
 			// post adds file
 			// need to match uuid in KV
 			// aka handleform
@@ -113,7 +108,7 @@ export class RequestHandler
 	/**
 	 * PUT reqest
 	 *
-	 * `/<alias>/admin` -> add hub to stream
+	 * `/<stream admin id>/admin` -> add hub to stream
 	 */
 	private async put( req: ServerRequest ): Promise<Response> 
 	{
@@ -135,7 +130,7 @@ export class RequestHandler
 				await Deno.readAll( req.body )
 			) )
 
-			// /<stream alias>
+			// /<stream admin ID>
 			// get hub url from body
 			// TODO: does this work without await?
 			this.action.connectStreamToHub( hubURL, path[ 1 ] )
@@ -152,9 +147,9 @@ export class RequestHandler
 	}
 
 	/**
-	 * DELETE reqest
+	 * DELETE request
 	 *
-	 * `/<alias>/admin` -> rm hub from stream
+	 * `/<stream admin id>/admin` -> rm hub from stream
 	 */
 	private async delete( req: ServerRequest ): Promise<Response> 
 	{
@@ -172,13 +167,13 @@ export class RequestHandler
 				throw Error( `No data` )
 			}
 
-			const url: URL = new URL( this.action.decodeText(
+			const hubID: string = this.action.decodeText(
 				await Deno.readAll( req.body )
-			) )
+			)
 
-			// /<stream alias>
+			// /<stream admin id>
 			// get hub url from body
-			await this.action.disconnectStreamFromHub( url, path[ 1 ] )
+			await this.action.disconnectStreamFromHub( hubID, path[ 1 ] )
 
 			return {
 				status: 200
@@ -196,13 +191,13 @@ export class RequestHandler
 	/**
 	 * GET requests
 	 *
-	 * `/<alias>/hubs` -> fetch stream hub list
+	 * `/<stream admin id>/hubs` -> fetch stream hub list
 	 *
-	 * `/<alias>/admin` -> fetch stream info
+	 * `/<stream admin id>/admin` -> fetch stream info
 	 *
-	 * `/<id>` -> fetch stream playlist
+	 * `/<stream public id>` -> fetch stream playlist
 	 *
-	 * `/<id>/<segment id>` -> fetch stream playlist after segment
+	 * `/<stream public id>/<segment id>` -> fetch stream playlist after segment
 	 */
 	private async get( req: ServerRequest ): Promise<Response> 
 	{
@@ -221,7 +216,7 @@ export class RequestHandler
 
 			switch( path[ 2 ] )
 			{
-				// /<stream alias>/hubs
+				// /<stream admin id>/hubs
 				case `hubs`:
 
 					return {
@@ -230,11 +225,11 @@ export class RequestHandler
 						headers
 					}
 
-				// /<stream alias>/admin
+				// /<stream admin id>/admin
 				case `admin`:
 					
 					return {
-						body: this.action.encodeText( JSON.stringify( await this.action.connectedHubs( path[ 1 ] ) ) ),
+						body: this.action.encodeText( JSON.stringify( await this.action.fetchStream( path[ 1 ] ) ) ),
 						status: 200,
 						headers
 					}
@@ -242,7 +237,7 @@ export class RequestHandler
 				default:
 
 					// return playlist
-					// /<stream id>/<segment?>
+					// /<stream public id>/<segment?>
 					return {
 						body: this.action.encodeText( JSON.stringify( await this.data.getSegmentList(
 							path[ 1 ],

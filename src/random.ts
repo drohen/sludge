@@ -1,5 +1,5 @@
 import { nanoid } from "https://deno.land/x/nanoid/async.ts"
-import type { RandomProvider } from "./main.ts"
+import type { RandomProvider } from "./core.ts"
 
 export class Random implements RandomProvider
 {
@@ -10,6 +10,8 @@ export class Random implements RandomProvider
 	private storeState: `ready` | `updating`
 
 	private uuidRegex: RegExp
+
+	private uuidRegexStr: string
 
 	constructor(
 		// no duplicates is important
@@ -23,7 +25,9 @@ export class Random implements RandomProvider
 
 		this.cursor = 0
 
-		this.uuidRegex = new RegExp( `^[A-Za-z0-9-_]{${this.idLength}}\\$` )
+		this.uuidRegexStr = `[A-Za-z0-9-_]{${this.idLength}}`
+
+		this.uuidRegex = new RegExp( `^${this.uuidRegexStr}$` )
 
 		this.storeState = `ready`
 
@@ -94,5 +98,10 @@ export class Random implements RandomProvider
 	public async uuid(): Promise<string>
 	{
 		return await nanoid( this.idLength )
+	}
+
+	public regexStr(): string
+	{
+		return this.uuidRegexStr
 	}
 }

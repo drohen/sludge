@@ -1,6 +1,6 @@
 import type * as sqlite from "https://deno.land/x/sqlite/mod.ts"
 import type { Hub } from "./hubHandler.ts"
-import type { DataProvider } from "./main.ts"
+import type { DataProvider } from "./core.ts"
 import type { Segment } from "./requestHandler.ts"
 import type { Stream } from "./streamHandler.ts"
 
@@ -44,16 +44,16 @@ export class DBInterface implements DataProvider
 	private init()
 	{
 		/**
-		 * id -> public access id for playlist/audio files
-		 * alias -> secret id for uploads/ streaming
+		 * publicID -> public access id for playlist/audio files
+		 * adminID -> secret id for uploads/ streaming
 		 * created -> datetime stream was generated
 		 */
 		this.db.query(
 			this.createTableQuery(
 				`streams`,
 				[
-					[ `id`, DataType.string ],
-					[ `alias`, DataType.string ],
+					[ `publicID`, DataType.string ],
+					[ `adminID`, DataType.string ],
 					[ `created`, DataType.int ]
 				]
 			),
@@ -61,50 +61,51 @@ export class DBInterface implements DataProvider
 		)
 	
 		/**
-		 * id -> id returned from hub for future delete req
-		 * url -> hub url for finding the stream
-		 * streamID -> id of linked stream
+		 * hubID -> id returned from hub store for future delete req
+		 * hubURL -> hub url for finding the stream
+		 * streamAdminID -> admin id of linked stream
 		 */
 		this.db.query(
 			this.createTableQuery(
 				`hubs`,
 				[
-					[ `url`, DataType.string ],
-					[ `streamID`, DataType.string ]
+					[ `hubID`, DataType.string ],
+					[ `hubURL`, DataType.string ],
+					[ `streamAdminID`, DataType.string ]
 				]
 			),
 			[]
 		)
 	
 		/**
-		 * id -> id for audio file segment retrieval
+		 * segmentID -> id for audio file segment retrieval
 		 * streamID -> id of linked stream
-		 * url -> public url for file request
+		 * segmentURL -> public url for file request
 		 */
 		this.db.query(
 			this.createTableQuery(
 				`segments`,
 				[
-					[ `id`, DataType.string ],
-					[ `streamID`, DataType.string ],
-					[ `url`, DataType.string ]
+					[ `segmentID`, DataType.string ],
+					[ `streamPublicID`, DataType.string ],
+					[ `segmentURL`, DataType.string ]
 				]
 			),
 			[]
 		)
 	}
 
-	private getStreamSegmentsByID( streamID: string, segmentID: string )
+	private getStreamSegmentsByID( streamPublicID: string, segmentID: string )
 	{
 		const segments: Segment[] = []
 
 		try 
 		{
 			const rows = this.db.query(
-				`SELECT id, streamID, url FROM segments WHERE streamID = $streamID AND rowid > (SELECT rowid FROM segments WHERE id = $segmentID) LIMIT 10;`,
+				`SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE streamPublicID = $streamPublicID AND rowid > (SELECT rowid FROM segments WHERE id = $segmentID) LIMIT 10;`,
 				{
 					$segmentID: segmentID,
-					$streamID: streamID
+					$streamPublicID: streamPublicID
 				}
 			)
 	
@@ -114,7 +115,7 @@ export class DBInterface implements DataProvider
 				{
 					const [ id, streamID, url ] = row
 	
-					segments.push( { id, streamID, url } )
+					segments.push( { segmentID: id, streamPublicID: streamID, segmentURL: url } )
 				}
 			}
 	
@@ -126,9 +127,9 @@ export class DBInterface implements DataProvider
 		}
 	}
 
-	private async getStreamsSegmentsRandom( streamID: string )
+	private async getStreamsSegmentsRandom( streamPublicID: string )
 	{
-		const count = this.streamSegmentsCount( streamID )
+		const count = this.streamSegmentsCount( streamPublicID )
 
 		if ( !count ) 
 		{
@@ -149,9 +150,9 @@ export class DBInterface implements DataProvider
 		try 
 		{
 			return this.db.query(
-				`SELECT id, streamID, url FROM segments WHERE streamID = $streamID LIMIT 10 OFFSET $offset;`,
+				`SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE streamPublicID = $streamPublicID LIMIT 10 OFFSET $offset;`,
 				{
-					$streamID: streamID,
+					$streamID: streamPublicID,
 					$offset: offset
 				}
 			)
@@ -162,14 +163,14 @@ export class DBInterface implements DataProvider
 		}
 	}
 
-	private getStreamSegmentsStart( streamID: string )
+	private getStreamSegmentsStart( streamPublicID: string )
 	{
 		try 
 		{
 			return this.db.query(
-				`SELECT id, streamID, url FROM segments WHERE streamID = $streamID LIMIT 10;`,
+				`SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE streamPublicID = $streamPublicID LIMIT 10;`,
 				{
-					$streamID: streamID
+					$streamPublicID: streamPublicID
 				}
 			)
 		}
@@ -179,12 +180,12 @@ export class DBInterface implements DataProvider
 		}
 	}
 
-	private streamSegmentsCount( streamID: string )
+	private streamSegmentsCount( streamPublicID: string )
 	{
 		const count = this.db.query(
-			`SELECT COUNT(*) FROM segments WHERE streamID = $streamID;`,
+			`SELECT COUNT(*) FROM segments WHERE streamPublicID = $streamPublicID;`,
 			{
-				$streamID: streamID
+				$streamPublicID: streamPublicID
 			}
 		)
 
@@ -198,31 +199,31 @@ export class DBInterface implements DataProvider
 		return value && value[ 0 ] ? value[ 0 ] : 0
 	}
 
-	private async selectStreamSegmentsFromRandomOrStart( streamID: string, type: `random` | `start` = `random` )
+	private async selectStreamSegmentsFromRandomOrStart( streamPublicID: string, type: `random` | `start` = `random` )
 	{
 		switch( type )
 		{
 			case `start`:
 
-				return this.getStreamSegmentsStart( streamID )
+				return this.getStreamSegmentsStart( streamPublicID )
 
 			case `random`:
 
-				return await this.getStreamsSegmentsRandom( streamID )
+				return await this.getStreamsSegmentsRandom( streamPublicID )
 
 		}
 	}
 
-	public async getSegmentList( streamID: string, segmentID?: string, type: `random` | `start` = `random` ): Promise<Segment[]>
+	public async getSegmentList( streamPublicID: string, segmentID?: string, type: `random` | `start` = `random` ): Promise<Segment[]>
 	{
 		if ( segmentID ) 
 		{
 			// if segment id, return all after segment ID
-			return this.getStreamSegmentsByID( streamID, segmentID )
+			return this.getStreamSegmentsByID( streamPublicID, segmentID )
 		}
 		else 
 		{
-			const rows = await this.selectStreamSegmentsFromRandomOrStart( streamID, type )
+			const rows = await this.selectStreamSegmentsFromRandomOrStart( streamPublicID, type )
 
 			const segments: Segment[] = []
 
@@ -230,9 +231,9 @@ export class DBInterface implements DataProvider
 			{
 				if ( row ) 
 				{
-					const [ id, streamID, url ] = row
+					const [ segmentID, streamPublicID, segmentURL ] = row
 
-					segments.push( { id, streamID, url } )
+					segments.push( { segmentID, streamPublicID, segmentURL } )
 				}
 			}
 
@@ -240,11 +241,11 @@ export class DBInterface implements DataProvider
 		}
 	}
 
-	public async getStream( streamAlias: string ): Promise<Stream>
+	public async getStream( adminID: string ): Promise<Stream>
 	{
 		const rows = this.db.query(
-			`SELECT id, alias, created FROM streams WHERE alias = $alias;`,
-			{ $alias: streamAlias }
+			`SELECT publicID, adminID, created FROM streams WHERE adminID = $adminID;`,
+			{ $adminID: adminID }
 		)
 
 		for ( const row of rows ) 
@@ -252,8 +253,8 @@ export class DBInterface implements DataProvider
 			if ( row ) 
 			{
 				return {
-					id: row[ 0 ],
-					alias: row[ 1 ],
+					publicID: row[ 0 ],
+					adminID: row[ 1 ],
 					created: row[ 2 ]
 				}
 			}
@@ -262,15 +263,15 @@ export class DBInterface implements DataProvider
 		throw Error( `Stream not found.` )
 	}
 
-	public async createStream( id: string, streamAlias: string ): Promise<Stream>
+	public async createStream( publicID: string, adminID: string ): Promise<Stream>
 	{
 		try 
 		{	
 			this.db.query( 
-				`INSERT INTO streams VALUES ($id, $alias, $created);`, 
+				`INSERT INTO streams VALUES ($publicID, $adminID, $created);`, 
 				{
-					$id: id,
-					$alias: streamAlias,
+					$publicID: publicID,
+					$adminID: adminID,
 					$created: Date.now()
 				} )
 		}
@@ -281,7 +282,7 @@ export class DBInterface implements DataProvider
 			throw Error( `Failed to create stream.` )
 		}
 
-		const stream = await this.getStream( streamAlias )
+		const stream = await this.getStream( adminID )
 
 		if ( !stream )
 		{
@@ -291,16 +292,16 @@ export class DBInterface implements DataProvider
 		return stream
 	}
 
-	public async addSegmentURL( id: string, streamID: string, url: URL ): Promise<void>
+	public async addSegmentURL( segmentID: string, streamPublicID: string, segmentURL: URL ): Promise<void>
 	{
 		try 
 		{
 			this.db.query( 
-				`INSERT INTO segments VALUES ($id, $streamID, $url);`, 
+				`INSERT INTO segments VALUES ($segmentID, $streamPublicID, $segmentURL);`, 
 				{
-					$id: id,
-					$streamID: streamID,
-					$url: url
+					$segmentID: segmentID,
+					$streamPublicID: streamPublicID,
+					$segmentURL: segmentURL
 				} )
 		}
 		catch ( e )
@@ -311,33 +312,33 @@ export class DBInterface implements DataProvider
 		}
 	}
 
-	public async getIDFromStreamAlias( streamAlias: string ): Promise<string>
+	public async getStreamPublicIDFromStreamAdminID( adminID: string ): Promise<string>
 	{
-		const stream = await this.getStream( streamAlias )
+		const stream = await this.getStream( adminID )
 
-		if ( !stream || !stream.id ) 
+		if ( !stream || !stream.publicID ) 
 		{
 			throw Error( `Stream not found.` )
 		}
 
-		return stream.id
+		return stream.publicID
 	}
 
-	public async getConnectedHubs( streamID: string ): Promise<Hub[]>
+	public async getConnectedHubs( streamPublicID: string ): Promise<Hub[]>
 	{
 		const hubs: Hub[] = []
 
 		try 
 		{
 			const rows = this.db.query(
-				`SELECT url, streamID FROM hubs WHERE streamID = $streamID;`,
-				{ $streamID: streamID }
+				`SELECT hubID, hubURL, streamPublicID FROM hubs WHERE streamPublicID = $streamPublicID;`,
+				{ $streamPublicID: streamPublicID }
 			)
 
 			for ( const row of rows ) 
 			{
 				if ( row )
-					hubs.push( { url: row[ 0 ], streamID: row[ 1 ] } )
+					hubs.push( { hubID: row[ 0 ], hubURL: row[ 1 ], streamPublicID: row[ 2 ] } )
 			}
 
 			return hubs
@@ -350,13 +351,14 @@ export class DBInterface implements DataProvider
 		}
 	}
 
-	public async connectHubToStream( streamID: string, hubURL: URL ): Promise<void>
+	public async connectHubToStream( hubID: string, hubURL: URL, streamPublicID: string ): Promise<void>
 	{
 		try
 		{
-			this.db.query( `INSERT INTO hubs VALUES ($url, $streamID);`, {
-				$url: hubURL.toString(),
-				$streamID: streamID
+			this.db.query( `INSERT INTO hubs VALUES ($hubID, $hubURL, $streamPublicID);`, {
+				$hubID: hubID,
+				$hubURL: hubURL.toString(),
+				$streamPublicID: streamPublicID
 			} )
 		}
 		catch ( e )
@@ -365,15 +367,15 @@ export class DBInterface implements DataProvider
 		}
 	}
 
-	public async disconnectHubFromStream( streamID: string, hubURL: URL ): Promise<void>
+	public async disconnectHubFromStream( hubID: string, streamPublicID: string ): Promise<void>
 	{
 		try
 		{
 			this.db.query(
-				`DELETE FROM hubs WHERE id = $id AND streamID = $streamID;`,
+				`DELETE FROM hubs WHERE hubID = $hubID AND streamPublicID = $streamPublicID;`,
 				{
-					$id: hubURL.toString(),
-					$streamID: streamID
+					$hubID: hubID,
+					$streamPublicID: streamPublicID
 				}
 			)
 		}

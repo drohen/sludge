@@ -1,18 +1,19 @@
 export interface Hub 
 {
-	url: string
-	streamID: string
+	hubID: string
+	hubURL: string
+	streamPublicID: string
 }
 
 export interface HubDataProvider
 {
-	getIDFromStreamAlias: ( streamAlias: string ) => Promise<string>
+	getStreamPublicIDFromStreamAdminID: ( streamAdminID: string ) => Promise<string>
 
-	getConnectedHubs: ( streamID: string ) => Promise<Hub[]>
+	getConnectedHubs: ( streamPublicID: string ) => Promise<Hub[]>
 
-	connectHubToStream: ( streamID: string, hubURL: URL ) => Promise<void>
+	connectHubToStream: ( hubID: string, hubURL: URL, streamPublicID: string ) => Promise<void>
 
-	disconnectHubFromStream: ( streamID: string, hubURL: URL ) => Promise<void>
+	disconnectHubFromStream: ( hubID: string, streamPublicID: string ) => Promise<void>
 }
 
 export interface HubCoreProvider
@@ -30,66 +31,79 @@ export class HubHandler
 
 	public async add( 
 		hubURL: URL,
-		streamAlias: string
+		streamAdminID: string
 	): Promise<void> 
 	{
 		// get stream id
-		const streamID = await this.data.getIDFromStreamAlias( streamAlias )
+		const streamPublicID = await this.data.getStreamPublicIDFromStreamAdminID( streamAdminID )
 
 		// ensure unique
-		const hubs = await this.data.getConnectedHubs( streamID )
+		const hubs = await this.data.getConnectedHubs( streamPublicID )
 
-		const url = hubURL.toString()
+		const _hubURL = hubURL.toString()
 
-		if ( hubs.find( ( hub: Hub ): boolean => hub.url === url ) !== undefined ) 
+		if ( hubs.find( ( hub: Hub ): boolean => hub.hubURL === _hubURL ) !== undefined ) 
 		{
-			throw Error( `Hub ${url} already used by stream.` )
+			throw Error( `Hub ${_hubURL} already used by stream.` )
 		}
 
 		// send ping to hub to add playlist URL
 		try
 		{
-			await fetch( 
-				url, 
+			const hubID = await fetch( 
+				_hubURL, 
 				{
 					headers: {
 						"Content-Type": `text/plain`
 					},
 					method: `PUT`,
 					// why not encode?
-					body: new URL( streamID, this.core.publicURL() ).toString()
+					body: new URL( streamPublicID, this.core.publicURL() ).toString()
 				} )
+				.then( res => res.text() )
+
+			if ( !hubID ) throw Error()
+
+			// TODO: does this work without await?
+			this.data.connectHubToStream( hubID, hubURL, streamPublicID )
 		}
 		catch ( e )
 		{
+			// TODO: log error
+
 			throw Error( `Failed to add hub URL to stream.` )
 		}
-
-		// TODO: does this work without await?
-		this.data.connectHubToStream( streamID, hubURL )
 	}
 
-	/**
-	 * It doesn't make sense to have a hub id for streams
-	 * Only someone with admin access to a stream can add/delete it
-	 * And the hub url always remains the same
-	 */
-	public async remove( url: URL, streamAlias: string ): Promise<void>
+	public async remove( hubID: string, streamAdminID: string ): Promise<void>
 	{
 		// get stream id
-		const streamID = await this.data.getIDFromStreamAlias( streamAlias )
+		const streamPublicID = await this.data.getStreamPublicIDFromStreamAdminID( streamAdminID )
 
+		// ensure exists
+		const hubs = await this.data.getConnectedHubs( streamPublicID )
+
+		const hub: Hub | undefined = hubs.find( ( hub: Hub ): boolean => hub.hubID === hubID )
+
+		if ( hub === undefined )
+		{
+			throw Error( `Hub ${hubID} does not exist.` )
+		}
+
+		// send ping to hub to rem playlist URL
+		// TODO: handle if failed to remove
 		// send ping to hub to rem playlist URL
 		// TODO: handle if failed to remove
 		try
 		{
 			await fetch( 
-				url,
+				hubID,
 				{
 					headers: {
 						"Content-Type": `text/plain`
 					},
-					method: `DELETE`
+					method: `DELETE`,
+					body: new TextEncoder().encode( hub.hubID )
 				} )
 		}
 		catch ( e )
@@ -98,12 +112,12 @@ export class HubHandler
 		}
 
 		// rem hub from hub list
-		await this.data.disconnectHubFromStream( streamID, url )
+		await this.data.disconnectHubFromStream( hubID, streamPublicID )
 	}
 
 	// TODO: add docs
-	public async get( streamAlias: string ): Promise<Hub[]> 
+	public async get( streamAdminID: string ): Promise<Hub[]> 
 	{
-		return await this.data.getConnectedHubs( await this.data.getIDFromStreamAlias( streamAlias ) )
+		return await this.data.getConnectedHubs( await this.data.getStreamPublicIDFromStreamAdminID( streamAdminID ) )
 	}
 }

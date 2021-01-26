@@ -1,0 +1,16 @@
+{
+	"deno.enable": true,
+	"deno.lint": false,
+	"editor.insertSpaces": false,
+	"editor.tabSize": 8,
+	"[typescript]": {
+		"editor.defaultFormatter": "dbaeumer.vscode-eslint"
+	},
+	"editor.wordWrap": "off",
+	"editor.codeActionsOnSave": {
+		"source.fixAll": true
+	},
+	"deno.import_intellisense_origins": {
+		"https://deno.land": true
+	}
+}

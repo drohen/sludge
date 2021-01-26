@@ -1,4 +1,4 @@
-## Sludge License (MIT)
+## sludge License (MIT)
 
 Copyright © 2020 DROHEN
 
