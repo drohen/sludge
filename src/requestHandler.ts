@@ -30,7 +30,7 @@ export interface RequestsActionsProvider
 
 	fetchStream: ( streamAdminID: string ) => Promise<UserStreamData>
 
-	processUploadFormData: ( request: ServerRequest, streamAdminID: string ) => Promise<void>
+	processUploadFormData: ( request: ServerRequest, streamAdminID: string ) => Promise<string>
 
 	connectStreamToHub: ( hubURL: URL, streamAdminID: string ) => Promise<void> 
 
@@ -92,9 +92,9 @@ export class RequestHandler
 			// post adds file
 			// need to match uuid in KV
 			// aka handleform
-			await this.action.processUploadFormData( req, path[ 1 ] )
+			const url = await this.action.processUploadFormData( req, path[ 1 ] )
 
-			return { body: this.action.encodeText( `Success\n` ), status: 200 }
+			return { body: this.action.encodeText( url ), status: 200 }
 		}
 		catch ( e ) 
 		{
@@ -268,7 +268,7 @@ export class RequestHandler
 
 		res.headers.append( `access-control-allow-origin`, `*` )
 
-		res.headers.append( `access-control-allow-method`, `GET` )
+		res.headers.append( `access-control-allow-method`, `GET, POST` )
 
 		res.headers.append(
 			`access-control-allow-headers`,

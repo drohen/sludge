@@ -1,6 +1,6 @@
-import { FormFile, MultipartFormData, MultipartReader } from "https://deno.land/std/mime/multipart.ts"
 import type { ServerRequest } from "https://deno.land/std/http/server.ts"
 import { join } from "https://deno.land/std/path/mod.ts"
+import { multiParser, Form, FormFile } from 'https://deno.land/x/multiparser@v2.0.3/mod.ts'
 
 export interface UploadDataProvider
 {
@@ -30,7 +30,7 @@ export class UploadFormHandler
 	)
 	{}
 
-	public async process( req: ServerRequest, streamAdminID: string ): Promise<void> 
+	public async process( req: ServerRequest, streamAdminID: string ): Promise<string> 
 	{
 		const contentType: string | null = req.headers.get( `content-type` )
 
@@ -47,16 +47,15 @@ export class UploadFormHandler
 		// need to wait before response, otherwise connection will close
 		// before we have all the data!
 
-		const reader = new MultipartReader( 
-			req.r, 
-			contentType.substr( contentType.indexOf( `=` ) + 1 ) )
+		const form: Form | undefined = await multiParser( req )
 
-		const data: MultipartFormData = await reader.readForm()
+		const formFile: FormFile | FormFile[] | undefined = form?.files.audio
 
-		const formFile: FormFile | FormFile[] | undefined = data.file( `audio` )
-
-		// we have the file data, connection can close now
-		if ( !formFile || Array.isArray( formFile ) || !formFile.content ) return
+		// form data isn't valid/usable, exit
+		if ( !formFile || Array.isArray( formFile ) || !formFile.content )
+		{
+			throw Error( `Bad upload` )
+		}
 
 		const segmentID = await this.random.uuid()
 
@@ -73,19 +72,23 @@ export class UploadFormHandler
 
 		Deno.close( file.rid )
 
-		Promise.resolve()
-
-		try 
+		return new Promise<string>( resolve =>
 		{
-			await this.data.addSegmentURL(
+			const segmentURL = new URL( fileLocation, this.core.fileURL() )
+
+			resolve( segmentURL.toString() )
+
+			this.data.addSegmentURL(
 				segmentID,
 				streamPublicID,
-				new URL( fileLocation, this.core.fileURL() )
+				segmentURL
 			)
-		}
-		catch ( e )
-		{
-			console.error( `Failed to create segment entry ${segmentID} for ${streamPublicID}` )
-		}
+				.catch( e =>
+				{
+					console.error( e )
+
+					console.error( `Failed to create segment entry ${segmentID} for ${streamPublicID}` )
+				} )	
+		} )
 	}
 }

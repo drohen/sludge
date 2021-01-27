@@ -28,7 +28,7 @@ NGINX_HOST=localhost NGINX_PORT=7777 SLUDGE_PORT=7778 SLUDGE_CACHE=30 SLUDGE_DIR
 
 ```shell
 # NOTE: trailing slash should be included at the end of the URLs
-SLUDGE_FILES="http://localhost:7778/audio/" SLUDGE_PUBLIC="http://localhost:7778/" SLUDGE_PORT="7778" SLUDGE_DIR="<some dir>" make run
+SLUDGE_FILES="http://localhost:7777/audio/" SLUDGE_PUBLIC="http://localhost:7778/" SLUDGE_PORT="7778" SLUDGE_DIR="<some dir>" make run
 ```
 
 ### Make to test config output
@@ -38,6 +38,8 @@ NGINX_HOST=localhost NGINX_PORT=7777 SLUDGE_PORT=7778 SLUDGE_CACHE=30 SLUDGE_DIR
 ```
 
 ### Testing local endpoints
+
+[cURL](https://curl.se/) can be used to test the request and response structure of the endpoints:
 
 Create Stream endpoint
 
@@ -55,4 +57,10 @@ Get segment IDs
 
 ```shell
 curl http://localhost:7778/<stream public ID>
-````
+```
+
+Post segment file
+
+```shell
+curl -F 'audio=@<path to project>/test-upload.opus' http://localhost:7778/<stream admin ID>
+```

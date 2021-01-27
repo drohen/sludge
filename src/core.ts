@@ -131,9 +131,9 @@ implements
 		return this.getStreamData( await this.streamHandler.get( adminID ) )
 	}
 
-	public async processUploadFormData( request: ServerRequest, adminID: string ): Promise<void>
+	public async processUploadFormData( request: ServerRequest, adminID: string ): Promise<string>
 	{
-		await this.uploadHandler.process( request, adminID )
+		return await this.uploadHandler.process( request, adminID )
 	}
 
 	public async connectStreamToHub( hubURL: URL, adminID: string ): Promise<void>

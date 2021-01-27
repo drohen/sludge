@@ -113,9 +113,9 @@ export class DBInterface implements DataProvider
 			{
 				if ( row ) 
 				{
-					const [ id, streamID, url ] = row
+					const [ segmentID, streamPublicID, segmentURL ] = row
 	
-					segments.push( { segmentID: id, streamPublicID: streamID, segmentURL: url } )
+					segments.push( { segmentID, streamPublicID, segmentURL } )
 				}
 			}
 	
@@ -152,7 +152,7 @@ export class DBInterface implements DataProvider
 			return this.db.query(
 				`SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE streamPublicID = $streamPublicID LIMIT 10 OFFSET $offset;`,
 				{
-					$streamID: streamPublicID,
+					$streamPublicID: streamPublicID,
 					$offset: offset
 				}
 			)
@@ -278,6 +278,7 @@ export class DBInterface implements DataProvider
 		catch ( e )
 		{
 			// TODO: log error
+			console.error( e )
 
 			throw Error( `Failed to create stream.` )
 		}
@@ -301,12 +302,13 @@ export class DBInterface implements DataProvider
 				{
 					$segmentID: segmentID,
 					$streamPublicID: streamPublicID,
-					$segmentURL: segmentURL
+					$segmentURL: segmentURL.toString()
 				} )
 		}
 		catch ( e )
 		{
 			// TODO: log error
+			console.error( e )
 
 			throw Error( `Failed to add segment.` )
 		}
