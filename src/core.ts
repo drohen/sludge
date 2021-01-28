@@ -4,7 +4,6 @@ import { DBInterface, DBActionsProvider } from "./db.ts"
 import { RequestHandler, RequestsActionsProvider, RequestsDataProvider, RequestsUUIDProvider, UserStreamData } from "./requestHandler.ts"
 import { StreamHandler, StreamCoreProvider, StreamDataProvider, StreamUUIDProvider, Stream } from "./streamHandler.ts"
 import { UploadCoreProvider, UploadDataProvider, UploadFormHandler, UploadRandomProvider } from "./uploadFormHandler.ts"
-import { HubCoreProvider, HubDataProvider, HubHandler } from "./hubHandler.ts"
 import { Random } from "./random.ts"
 
 export type RandomProvider = 
@@ -17,14 +16,12 @@ export type DataProvider =
 	& RequestsDataProvider
 	& StreamDataProvider
 	& UploadDataProvider
-	& HubDataProvider
 
 export class Core 
 implements
 	RequestsActionsProvider, 
 	StreamCoreProvider,
-	UploadCoreProvider,
-	HubCoreProvider
+	UploadCoreProvider
 {
 	private db: sqlite.DB
 
@@ -35,8 +32,6 @@ implements
 	private streamHandler: StreamHandler
 
 	private uploadHandler: UploadFormHandler
-
-	private hubHandler: HubHandler
 
 	private encoder: TextEncoder
 
@@ -68,8 +63,6 @@ implements
 
 		this.uploadHandler = new UploadFormHandler( this, this.dbAPI, this.random )
 
-		this.hubHandler = new HubHandler( this, this.dbAPI )
-
 		this.encoder = new TextEncoder()
 
 		this.decoder = new TextDecoder()
@@ -80,8 +73,7 @@ implements
 	{
 		return {
 			admin: new URL( `${stream.adminID}/admin`, this._publicURL ).toString(),
-			download: new URL( stream.publicID, this._publicURL ).toString(),
-			hub: new URL( `${stream.adminID}/hubs`, this._publicURL ).toString()
+			public: new URL( stream.publicID, this._publicURL ).toString()
 		}
 	}
 
@@ -134,21 +126,6 @@ implements
 	public async processUploadFormData( request: ServerRequest, adminID: string ): Promise<string>
 	{
 		return await this.uploadHandler.process( request, adminID )
-	}
-
-	public async connectStreamToHub( hubURL: URL, adminID: string ): Promise<void>
-	{
-		return await this.hubHandler.add( hubURL, adminID )
-	}
-
-	public async disconnectStreamFromHub( hubID: string, adminID: string ): Promise<void>
-	{
-		await this.hubHandler.remove( hubID, adminID )
-	}
-
-	public async connectedHubs( adminID: string ): Promise<string[]>
-	{
-		return ( await this.hubHandler.get( adminID ) ).map( ( { hubURL: url } ) => url )
 	}
 
 	public publicURL(): URL

@@ -4,49 +4,16 @@ import * as fs from "https://deno.land/std/fs/mod.ts"
 import { parse, Args } from "https://deno.land/std/flags/mod.ts"
 import { Configure } from "./configure.ts"
 import { Random } from "./random.ts"
+import { cli } from "./cliHelp.ts"
 
-const cli = `
-sludge CLI
-
-deno run src/sludge.ts { arguments }
-
-Arguments:
-	
-	--development		Development mode for local deployment (default)
-	
-	--test			Test mode for generating files without running server
-	
-	--production		Production mode for running sludge on a server
-	
-	--dir="<file path>"	Set directory for saving files, e.g. ~/.sludge
-	
-	--port="<port>"		Port for running sludge app, e.g. 8080
-	
-	--public="<url>"	URL for accessing sludge API, e.g. https://ga.ge/
-	
-	--files="<url>"		URL for accessing sludge audio, e.g. https://ga.ge/audio/
-
-	--configure		Generate templates for nginx and system services to run server
-				Development mode will work on Linux / OS X and only run nginx
-				Test mode will only output configuration files
-				Production mode works only on Linux and run nginx and systemd services
-	
-	--nginx="<port>"	Port that nginx will be exposed on, e.g. 80
-	
-	--host="<host/ip>"	Address that will be used to access nginx, e.g. ga.ge
-	
-	--cache="<days>"	Number of days to cache audio files, e.g. 30
-	
-	--name="<file name>"	Name of nginx configuration file, default is sludge_nginx.conf
-	
-	--help			Show this information screen
-`
 
 class Sludge
 {
 	private core?: Core
 
 	private config?: Configure
+
+	private cli: string
 
 	public static init()
 	{
@@ -56,7 +23,6 @@ class Sludge
 		}
 		catch ( e )
 		{
-			// Need better error/logging system
 			console.error( e )
 
 			console.log( `Try: deno run src/sludge.ts --help` )
@@ -65,6 +31,8 @@ class Sludge
 
 	constructor()
 	{
+		this.cli = cli
+
 		this.parseArgs()
 			.then( () =>
 			{
@@ -79,7 +47,6 @@ class Sludge
 			} )
 			.catch( ( e ) =>
 			{
-				// Need better error/logging system
 				console.error( e )
 
 				console.log( `Try: deno run src/sludge.ts --help` )
@@ -88,9 +55,21 @@ class Sludge
 
 	private printAPI()
 	{
-		console.log( cli )
+		console.log( this.cli )
 	}
 
+	/**
+	 * Generate nginx/system files based on provided config flags
+	 * 
+	 * This function will parse the given flags, it will error on
+	 * and incorrect type or value.
+	 * 
+	 * Test mode will just output config file
+	 * Development mode will create a local nginx server
+	 * Production mode will create a system service
+	 * 
+	 * @param flags flags passed at CLI, see cliHelp.ts for information
+	 */
 	private async configure( flags: Args )
 	{
 		const reqArgs: string[] = [ `nginx`, `host`, `port`, `cache`, `dir` ]

@@ -44,7 +44,7 @@ export class StreamHandler
 		// Used for public access to stream segments list, segment files (dir)
 		const publicID: string = await this.random.uuid()
 
-		// Used for owner to add segments, get admin info, add/remove hubs
+		// Used for owner to add segments, get admin info
 		const adminID: string = await this.random.uuid()
 
 		// create dir for storing segment files for public access

@@ -19,7 +19,7 @@ const nginxTemplate = (
 	gzip_types				text/plain application/xml;
 
 
-	# adminID/publicID path handling (hubs put/del, multipart form post segment, playlist get)
+	# adminID/publicID path handling (multipart form post segment, playlist get)
 
 	location ~ "^/${streamIDRegex}" 
 	{

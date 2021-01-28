@@ -1,5 +1,4 @@
 import type * as sqlite from "https://deno.land/x/sqlite/mod.ts"
-import type { Hub } from "./hubHandler.ts"
 import type { DataProvider } from "./core.ts"
 import type { Segment } from "./requestHandler.ts"
 import type { Stream } from "./streamHandler.ts"
@@ -15,9 +14,18 @@ export interface DBActionsProvider
 	random: ( min: number, max: number ) => Promise<number>
 }
 
+export enum StreamStart
+{
+	start = `start`,
+	latest = `latest`,
+	random = `random`
+}
+
 export class DBInterface implements DataProvider
 {
 	private emptyList: []
+
+	private streamSelect: string
 
 	constructor(
 		private db: sqlite.DB,
@@ -25,6 +33,11 @@ export class DBInterface implements DataProvider
 	)
 	{
 		this.emptyList = []
+
+		this.streamSelect = [
+			`SELECT segmentID, streamPublicID, segmentURL FROM segments`,
+			`WHERE streamPublicID = $streamPublicID AND rowid > (SELECT rowid FROM segments WHERE segmentID = $segmentID) LIMIT 10;`
+		].join( ` ` )
 
 		this.init()
 	}
@@ -61,23 +74,6 @@ export class DBInterface implements DataProvider
 		)
 	
 		/**
-		 * hubID -> id returned from hub store for future delete req
-		 * hubURL -> hub url for finding the stream
-		 * streamAdminID -> admin id of linked stream
-		 */
-		this.db.query(
-			this.createTableQuery(
-				`hubs`,
-				[
-					[ `hubID`, DataType.string ],
-					[ `hubURL`, DataType.string ],
-					[ `streamAdminID`, DataType.string ]
-				]
-			),
-			[]
-		)
-	
-		/**
 		 * segmentID -> id for audio file segment retrieval
 		 * streamID -> id of linked stream
 		 * segmentURL -> public url for file request
@@ -102,7 +98,7 @@ export class DBInterface implements DataProvider
 		try 
 		{
 			const rows = this.db.query(
-				`SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE streamPublicID = $streamPublicID AND rowid > (SELECT rowid FROM segments WHERE id = $segmentID) LIMIT 10;`,
+				this.streamSelect,
 				{
 					$segmentID: segmentID,
 					$streamPublicID: streamPublicID
@@ -123,6 +119,8 @@ export class DBInterface implements DataProvider
 		}
 		catch ( e )
 		{
+			console.error( e )
+
 			throw Error( `Could not get segments for stream.` )
 		}
 	}
@@ -144,7 +142,7 @@ export class DBInterface implements DataProvider
 		 * Less than 10 segments, just return everything
 		 */
 		const offset = count > 10
-			? this.random.random( 0, count - 9 )
+			? await this.random.random( 0, count - 9 )
 			: 0
 
 		try 
@@ -159,6 +157,27 @@ export class DBInterface implements DataProvider
 		}
 		catch ( e )
 		{
+			console.error( e )
+
+			throw Error( `Could not get segments for stream.` )
+		}
+	}
+
+	private async getStreamsSegmentsLatest( streamPublicID: string )
+	{
+		try 
+		{
+			return this.db.query(
+				`SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE streamPublicID = $streamPublicID ORDER BY rowid DESC LIMIT 10;`,
+				{
+					$streamPublicID: streamPublicID
+				}
+			)
+		}
+		catch ( e )
+		{
+			console.error( e )
+
 			throw Error( `Could not get segments for stream.` )
 		}
 	}
@@ -176,11 +195,13 @@ export class DBInterface implements DataProvider
 		}
 		catch ( e )
 		{
+			console.error( e )
+
 			throw Error( `Could not get segments for stream.` )
 		}
 	}
 
-	private streamSegmentsCount( streamPublicID: string )
+	private streamSegmentsCount( streamPublicID: string ): number
 	{
 		const count = this.db.query(
 			`SELECT COUNT(*) FROM segments WHERE streamPublicID = $streamPublicID;`,
@@ -199,22 +220,25 @@ export class DBInterface implements DataProvider
 		return value && value[ 0 ] ? value[ 0 ] : 0
 	}
 
-	private async selectStreamSegmentsFromRandomOrStart( streamPublicID: string, type: `random` | `start` = `random` )
+	private async selectStreamSegmentsFromStartType( streamPublicID: string, type: StreamStart )
 	{
 		switch( type )
 		{
-			case `start`:
+			case StreamStart.start:
 
 				return this.getStreamSegmentsStart( streamPublicID )
 
-			case `random`:
+			case StreamStart.random:
 
 				return await this.getStreamsSegmentsRandom( streamPublicID )
 
+			case StreamStart.latest:
+
+				return this.getStreamsSegmentsLatest( streamPublicID )
 		}
 	}
 
-	public async getSegmentList( streamPublicID: string, segmentID?: string, type: `random` | `start` = `random` ): Promise<Segment[]>
+	public async getSegmentList( streamPublicID: string, segmentID?: string, type: StreamStart = StreamStart.start ): Promise<Segment[]>
 	{
 		if ( segmentID ) 
 		{
@@ -223,7 +247,7 @@ export class DBInterface implements DataProvider
 		}
 		else 
 		{
-			const rows = await this.selectStreamSegmentsFromRandomOrStart( streamPublicID, type )
+			const rows = await this.selectStreamSegmentsFromStartType( streamPublicID, type )
 
 			const segments: Segment[] = []
 
@@ -324,66 +348,5 @@ export class DBInterface implements DataProvider
 		}
 
 		return stream.publicID
-	}
-
-	public async getConnectedHubs( streamPublicID: string ): Promise<Hub[]>
-	{
-		const hubs: Hub[] = []
-
-		try 
-		{
-			const rows = this.db.query(
-				`SELECT hubID, hubURL, streamPublicID FROM hubs WHERE streamPublicID = $streamPublicID;`,
-				{ $streamPublicID: streamPublicID }
-			)
-
-			for ( const row of rows ) 
-			{
-				if ( row )
-					hubs.push( { hubID: row[ 0 ], hubURL: row[ 1 ], streamPublicID: row[ 2 ] } )
-			}
-
-			return hubs
-		}
-		catch ( e )
-		{
-			// TODO: log error
-
-			throw Error( `Could not get hubs for stream.` )
-		}
-	}
-
-	public async connectHubToStream( hubID: string, hubURL: URL, streamPublicID: string ): Promise<void>
-	{
-		try
-		{
-			this.db.query( `INSERT INTO hubs VALUES ($hubID, $hubURL, $streamPublicID);`, {
-				$hubID: hubID,
-				$hubURL: hubURL.toString(),
-				$streamPublicID: streamPublicID
-			} )
-		}
-		catch ( e )
-		{
-			throw Error( `Failed to add hub URL to stream.` )
-		}
-	}
-
-	public async disconnectHubFromStream( hubID: string, streamPublicID: string ): Promise<void>
-	{
-		try
-		{
-			this.db.query(
-				`DELETE FROM hubs WHERE hubID = $hubID AND streamPublicID = $streamPublicID;`,
-				{
-					$hubID: hubID,
-					$streamPublicID: streamPublicID
-				}
-			)
-		}
-		catch ( e )
-		{
-			throw Error( `Failed to remove hub URL from stream.` )
-		}
 	}
 }

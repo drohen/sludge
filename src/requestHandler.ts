@@ -1,10 +1,10 @@
 import type { ServerRequest, Response } from "https://deno.land/std/http/server.ts"
+import { StreamStart } from "./db.ts"
 
 export interface UserStreamData 
 {
 	admin: string
-	download: string
-	hub: string
+	public: string
 }
 
 export interface Segment
@@ -16,7 +16,7 @@ export interface Segment
 
 export interface RequestsDataProvider
 {
-	getSegmentList: ( streamPublicID: string, segmentID?: string ) => Promise<Segment[]>
+	getSegmentList: ( streamPublicID: string, segmentID?: string, type?: StreamStart ) => Promise<Segment[]>
 }
 
 export interface RequestsUUIDProvider
@@ -31,12 +31,6 @@ export interface RequestsActionsProvider
 	fetchStream: ( streamAdminID: string ) => Promise<UserStreamData>
 
 	processUploadFormData: ( request: ServerRequest, streamAdminID: string ) => Promise<string>
-
-	connectStreamToHub: ( hubURL: URL, streamAdminID: string ) => Promise<void> 
-
-	disconnectStreamFromHub: ( hubID: string, streamAdminID: string ) => Promise<void>
-
-	connectedHubs: ( streamAdminID: string ) => Promise<string[]>
 
 	encodeText: ( text: string ) => Uint8Array
 
@@ -106,96 +100,15 @@ export class RequestHandler
 	}
 
 	/**
-	 * PUT reqest
-	 *
-	 * `/<stream admin id>/admin` -> add hub to stream
-	 */
-	private async put( req: ServerRequest ): Promise<Response> 
-	{
-		const path: string[] = req.url.split( `/` )
-
-		try 
-		{
-			if ( !this.uuid.validateUUID( path[ 1 ] ) || path[ 2 ] !== `admin` ) 
-			{
-				throw Error( `Invalid path` )
-			}
-
-			if ( !req.contentLength ) 
-			{
-				throw Error( `No data` )
-			}
-
-			const hubURL: URL = new URL( this.action.decodeText(
-				await Deno.readAll( req.body )
-			) )
-
-			// /<stream admin ID>
-			// get hub url from body
-			// TODO: does this work without await?
-			this.action.connectStreamToHub( hubURL, path[ 1 ] )
-
-			return { status: 200 }
-		}
-		catch ( e ) 
-		{
-			return {
-				body: this.action.encodeText( e.message ),
-				status: 404
-			}
-		}
-	}
-
-	/**
-	 * DELETE request
-	 *
-	 * `/<stream admin id>/admin` -> rm hub from stream
-	 */
-	private async delete( req: ServerRequest ): Promise<Response> 
-	{
-		const path: string[] = req.url.split( `/` )
-
-		try 
-		{
-			if ( !this.uuid.validateUUID( path[ 1 ] ) || path[ 2 ] !== `admin` ) 
-			{
-				throw Error( `Invalid path` )
-			}
-
-			if ( !req.contentLength ) 
-			{
-				throw Error( `No data` )
-			}
-
-			const hubID: string = this.action.decodeText(
-				await Deno.readAll( req.body )
-			)
-
-			// /<stream admin id>
-			// get hub url from body
-			await this.action.disconnectStreamFromHub( hubID, path[ 1 ] )
-
-			return {
-				status: 200
-			}
-		}
-		catch ( e ) 
-		{
-			return {
-				body: this.action.encodeText( e.message ),
-				status: 404
-			}
-		}
-	}
-
-	/**
 	 * GET requests
-	 *
-	 * `/<stream admin id>/hubs` -> fetch stream hub list
 	 *
 	 * `/<stream admin id>/admin` -> fetch stream info
 	 *
-	 * `/<stream public id>` -> fetch stream playlist
+	 * `/<stream public id>` -> fetch stream playlist from start
+	 *
+	 * `/<stream public id>/random` -> fetch stream playlist at random point
+	 *
+	 * `/<stream public id>/latest` -> fetch stream playlist latest segments
 	 *
 	 * `/<stream public id>/<segment id>` -> fetch stream playlist after segment
 	 */
@@ -216,27 +129,42 @@ export class RequestHandler
 
 			switch( path[ 2 ] )
 			{
-				// /<stream admin id>/hubs
-				case `hubs`:
-
-					return {
-						body: this.action.encodeText( JSON.stringify( await this.action.connectedHubs( path[ 1 ] ) ) ),
-						status: 200,
-						headers
-					}
-
-				// /<stream admin id>/admin
 				case `admin`:
-					
+					// /<stream admin id>/admin
 					return {
 						body: this.action.encodeText( JSON.stringify( await this.action.fetchStream( path[ 1 ] ) ) ),
 						status: 200,
 						headers
 					}
+	
+				case `random`:
+					// return playlist from random
+					// /<stream public id>/random
+					return {
+						body: this.action.encodeText( JSON.stringify( await this.data.getSegmentList(
+							path[ 1 ],
+							undefined,
+							StreamStart.random
+						) ) ),
+						status: 200,
+						headers
+					}
+
+				case `latest`:
+					// return playlist latest segments
+					// /<stream public id>/latest
+					return {
+						body: this.action.encodeText( JSON.stringify( await this.data.getSegmentList(
+							path[ 1 ],
+							undefined,
+							StreamStart.latest
+						) ) ),
+						status: 200,
+						headers
+					}
 
 				default:
-
-					// return playlist
+					// return playlist from segment or start
 					// /<stream public id>/<segment?>
 					return {
 						body: this.action.encodeText( JSON.stringify( await this.data.getSegmentList(
@@ -295,12 +223,6 @@ export class RequestHandler
 	
 			case `POST`:
 				return await this.post( req )
-	
-			case `PUT`:
-				return await this.put( req )
-	
-			case `DELETE`:
-				return await this.delete( req )
 	
 			case `OPTIONS`:
 				return { status: 200 }
