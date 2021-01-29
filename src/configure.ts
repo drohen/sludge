@@ -94,6 +94,20 @@ export class Configure
 
 	private servicePath: string
 
+	/**
+	 * Builds and outputs the configuration files to serve the app
+	 * 
+	 * @param environment indicate to output config file (test), run locally (development) or deploy (production)
+	 * @param regexStr string to validate file/stream URLs
+	 * @param nginxPort port to run and access nginx server
+	 * @param serverName IP/domain to access nginx server
+	 * @param sludgePort port where sludge server will be run
+	 * @param rootFilePath path to where files are stored on the machine
+	 * @param cacheAgeDays length in days to preserve audio file cache
+	 * @param nginxConfFileName file name to save the nginx config file under
+	 * @param filesURL URL/path where the audio files will be accessed
+	 * @param publicURL URL/path where the app will be accessed
+	 */
 	constructor(
 		private environment: `test` | `development` | `production` = `development`,
 		private regexStr: string,
@@ -120,6 +134,9 @@ export class Configure
 		this.cacheAgeSeconds = cacheAgeDays * 24 * 60 * 60
 	}
 
+	/**
+	 * Just write the nginx config file
+	 */
 	private async test()
 	{
 		console.log( `Writing file to`, this.nginxPath )
@@ -137,6 +154,10 @@ export class Configure
 			) )
 	}
 
+	/**
+	 * Restart nginx
+	 * @param type OS environment
+	 */
 	private async restartService( type: `osx` | `linux` )
 	{
 		// Restart nginx to enable conf file
@@ -156,6 +177,9 @@ export class Configure
 		p.close()
 	}
 
+	/**
+	 * Create development config and start server
+	 */
 	private async development()
 	{
 		console.log( `Writing file to`, this.nginxPath )
@@ -195,6 +219,9 @@ export class Configure
 		}
 	}
 
+	/**
+	 * Create production config and start service
+	 */
 	private async production()
 	{
 		if ( Deno.build.os !== `linux` )
@@ -270,6 +297,9 @@ export class Configure
 		p1.close()
 	}
 
+	/**
+	 * This needs to be called to output the config and (optionally) run nginx/service
+	 */
 	public async generate(): Promise<void>
 	{
 		switch( this.environment )

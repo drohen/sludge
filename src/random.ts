@@ -13,6 +13,11 @@ export class Random implements RandomProvider
 
 	private uuidRegexStr: string
 
+	/**
+	 * Provider for randomness, generator of IDs and validation
+	 * @param idLength Length of the id used for segments, streams
+	 * @param randomStoreSize Number of IDs to pre-generate
+	 */
 	constructor(
 		// no duplicates is important
 		// security is less important

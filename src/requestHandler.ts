@@ -31,21 +31,29 @@ export interface RequestsActionsProvider
 	fetchStream: ( streamAdminID: string ) => Promise<UserStreamData>
 
 	processUploadFormData: ( request: ServerRequest, streamAdminID: string ) => Promise<string>
-
-	encodeText: ( text: string ) => Uint8Array
-
-	decodeText: ( binary: Uint8Array ) => string
 }
 
 export class RequestHandler
 {
+	private encoder: TextEncoder
 
 	constructor(
 		private action: RequestsActionsProvider,
 		private data: RequestsDataProvider,
 		private uuid: RequestsUUIDProvider
 	)
-	{}
+	{
+
+		this.encoder = new TextEncoder()
+	}
+
+	/**
+	 * Encoder to be reused throughout requests
+	 */
+	private encode( text: string ): Uint8Array
+	{
+		return this.encoder.encode( text )
+	}
 
 	/**
 	 * POST request
@@ -69,7 +77,7 @@ export class RequestHandler
 				headers.set( `content-type`, `application/json` )
 
 				return {
-					body: this.action.encodeText(
+					body: this.encode(
 						JSON.stringify( await this.action.createStream() )
 					),
 					status: 200,
@@ -88,12 +96,12 @@ export class RequestHandler
 			// aka handleform
 			const url = await this.action.processUploadFormData( req, path[ 1 ] )
 
-			return { body: this.action.encodeText( url ), status: 200 }
+			return { body: this.encode( url ), status: 200 }
 		}
 		catch ( e ) 
 		{
 			return {
-				body: this.action.encodeText( e.message ),
+				body: this.encode( e.message ),
 				status: 404
 			}
 		}
@@ -132,7 +140,7 @@ export class RequestHandler
 				case `admin`:
 					// /<stream admin id>/admin
 					return {
-						body: this.action.encodeText( JSON.stringify( await this.action.fetchStream( path[ 1 ] ) ) ),
+						body: this.encode( JSON.stringify( await this.action.fetchStream( path[ 1 ] ) ) ),
 						status: 200,
 						headers
 					}
@@ -141,7 +149,7 @@ export class RequestHandler
 					// return playlist from random
 					// /<stream public id>/random
 					return {
-						body: this.action.encodeText( JSON.stringify( await this.data.getSegmentList(
+						body: this.encode( JSON.stringify( await this.data.getSegmentList(
 							path[ 1 ],
 							undefined,
 							StreamStart.random
@@ -154,7 +162,7 @@ export class RequestHandler
 					// return playlist latest segments
 					// /<stream public id>/latest
 					return {
-						body: this.action.encodeText( JSON.stringify( await this.data.getSegmentList(
+						body: this.encode( JSON.stringify( await this.data.getSegmentList(
 							path[ 1 ],
 							undefined,
 							StreamStart.latest
@@ -167,7 +175,7 @@ export class RequestHandler
 					// return playlist from segment or start
 					// /<stream public id>/<segment?>
 					return {
-						body: this.action.encodeText( JSON.stringify( await this.data.getSegmentList(
+						body: this.encode( JSON.stringify( await this.data.getSegmentList(
 							path[ 1 ],
 							this.uuid.validateUUID( path[ 2 ] ) ? path[ 2 ] : undefined
 						) ) ),
@@ -179,31 +187,10 @@ export class RequestHandler
 		catch ( e ) 
 		{
 			return {
-				body: this.action.encodeText( e.message ),
+				body: this.encode( e.message ),
 				status: 404
 			}
 		}
-	}
-
-	// TODO: move to nginx?
-	// required for streaming requests
-	private setCORS( res: Response ): Response 
-	{
-		if ( !res.headers ) 
-		{
-			res.headers = new Headers()
-		}
-
-		res.headers.append( `access-control-allow-origin`, `*` )
-
-		res.headers.append( `access-control-allow-method`, `GET, POST` )
-
-		res.headers.append(
-			`access-control-allow-headers`,
-			`Origin, X-Requested-With, Content-Type, Accept, Range`
-		)
-
-		return res
 	}
 
 	// nginx static routes
@@ -229,14 +216,18 @@ export class RequestHandler
 	
 			default:
 				return {
-					body: this.action.encodeText( `This is not a valid request.` ),
+					body: this.encode( `This is not a valid request.` ),
 					status: 400
 				}
 		}
 	}
 
+	/**
+	 * Main function used to handle all server requests
+	 * @param req Any given server request
+	 */
 	public async handle( req: ServerRequest ): Promise<void> 
 	{
-		req.respond( this.setCORS( await this.selectMethod( req ) ) )
+		req.respond( await this.selectMethod( req ) )
 	}
 }

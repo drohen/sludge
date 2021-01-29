@@ -203,6 +203,9 @@ class Sludge
 		return new URL( url )
 	}
 
+	/**
+	 * Decide whether to generate config or run server
+	 */
 	public async parseArgs()
 	{
 		const flags: Args = parse( Deno.args )

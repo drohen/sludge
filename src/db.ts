@@ -27,6 +27,8 @@ export class DBInterface implements DataProvider
 
 	private streamSelect: string
 
+	private selecteLatest: string
+
 	constructor(
 		private db: sqlite.DB,
 		private random: DBActionsProvider
@@ -34,14 +36,25 @@ export class DBInterface implements DataProvider
 	{
 		this.emptyList = []
 
+		// This is here simply to reduce line length
 		this.streamSelect = [
 			`SELECT segmentID, streamPublicID, segmentURL FROM segments`,
 			`WHERE streamPublicID = $streamPublicID AND rowid > (SELECT rowid FROM segments WHERE segmentID = $segmentID) LIMIT 10;`
 		].join( ` ` )
 
+		this.selecteLatest = [
+			`SELECT * FROM (SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE`,
+			`streamPublicID = $streamPublicID ORDER BY rowid DESC LIMIT 10) ORDER BY rowid ASC;`
+		].join( ` ` )
+
 		this.init()
 	}
 
+	/**
+	 * Fn to reduce code repitition and help creating tables
+	 * @param table table name
+	 * @param values column names
+	 */
 	private createTableQuery( 
 		table: string,
 		values: [string, DataType][] 
@@ -91,6 +104,11 @@ export class DBInterface implements DataProvider
 		)
 	}
 
+	/**
+	 * Return up to 10 segments following the provided segment ID
+	 * @param streamPublicID 
+	 * @param segmentID 
+	 */
 	private getStreamSegmentsByID( streamPublicID: string, segmentID: string )
 	{
 		const segments: Segment[] = []
@@ -125,6 +143,10 @@ export class DBInterface implements DataProvider
 		}
 	}
 
+	/**
+	 * Returns list of segments, starting from a random segment in all segments
+	 * @param streamPublicID 
+	 */
 	private async getStreamsSegmentsRandom( streamPublicID: string )
 	{
 		const count = this.streamSegmentsCount( streamPublicID )
@@ -163,12 +185,16 @@ export class DBInterface implements DataProvider
 		}
 	}
 
+	/**
+	 * Returns most recent segments, up to 10 items
+	 * @param streamPublicID 
+	 */
 	private async getStreamsSegmentsLatest( streamPublicID: string )
 	{
 		try 
 		{
 			return this.db.query(
-				`SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE streamPublicID = $streamPublicID ORDER BY rowid DESC LIMIT 10;`,
+				this.selecteLatest,
 				{
 					$streamPublicID: streamPublicID
 				}
@@ -182,6 +208,10 @@ export class DBInterface implements DataProvider
 		}
 	}
 
+	/**
+	 * Return list of segments from start, up to 10 items
+	 * @param streamPublicID 
+	 */
 	private getStreamSegmentsStart( streamPublicID: string )
 	{
 		try 
@@ -201,6 +231,10 @@ export class DBInterface implements DataProvider
 		}
 	}
 
+	/**
+	 * Count total segments for stream
+	 * @param streamPublicID 
+	 */
 	private streamSegmentsCount( streamPublicID: string ): number
 	{
 		const count = this.db.query(
@@ -220,6 +254,11 @@ export class DBInterface implements DataProvider
 		return value && value[ 0 ] ? value[ 0 ] : 0
 	}
 
+	/**
+	 * Get segment list based on request type
+	 * @param streamPublicID 
+	 * @param type 
+	 */
 	private async selectStreamSegmentsFromStartType( streamPublicID: string, type: StreamStart )
 	{
 		switch( type )
@@ -238,6 +277,12 @@ export class DBInterface implements DataProvider
 		}
 	}
 
+	/**
+	 * Return formatted list of segments
+	 * @param streamPublicID 
+	 * @param segmentID 
+	 * @param type random, start, latest
+	 */
 	public async getSegmentList( streamPublicID: string, segmentID?: string, type: StreamStart = StreamStart.start ): Promise<Segment[]>
 	{
 		if ( segmentID ) 
@@ -265,6 +310,10 @@ export class DBInterface implements DataProvider
 		}
 	}
 
+	/**
+	 * Return stream info
+	 * @param adminID 
+	 */
 	public async getStream( adminID: string ): Promise<Stream>
 	{
 		const rows = this.db.query(
@@ -287,6 +336,11 @@ export class DBInterface implements DataProvider
 		throw Error( `Stream not found.` )
 	}
 
+	/**
+	 * Create a new stream entry
+	 * @param publicID Id used for request segments
+	 * @param adminID Id used for posting segments
+	 */
 	public async createStream( publicID: string, adminID: string ): Promise<Stream>
 	{
 		try 
@@ -317,6 +371,13 @@ export class DBInterface implements DataProvider
 		return stream
 	}
 
+	/**
+	 * Add entry for a segment URL location
+	 * Segments will be returned in their insert order when requested
+	 * @param segmentID 
+	 * @param streamPublicID 
+	 * @param segmentURL 
+	 */
 	public async addSegmentURL( segmentID: string, streamPublicID: string, segmentURL: URL ): Promise<void>
 	{
 		try 
@@ -338,6 +399,10 @@ export class DBInterface implements DataProvider
 		}
 	}
 
+	/**
+	 * Get a public ID from an admin ID
+	 * @param adminID 
+	 */
 	public async getStreamPublicIDFromStreamAdminID( adminID: string ): Promise<string>
 	{
 		const stream = await this.getStream( adminID )

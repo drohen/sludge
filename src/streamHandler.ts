@@ -33,7 +33,10 @@ export class StreamHandler
 	)
 	{}
 
-	// TODO: add docs
+	/**
+	 * Return stream data for adminID
+	 * @param adminID 
+	 */
 	public async get( adminID: string ): Promise<Stream> 
 	{
 		return await this.data.getStream( adminID )

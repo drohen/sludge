@@ -33,14 +33,18 @@ implements
 
 	private uploadHandler: UploadFormHandler
 
-	private encoder: TextEncoder
-
-	private decoder: TextDecoder
-
 	private dbAPI: DBInterface
 
 	private random: Random
 
+	/**
+	 * 
+	 * @param _publicURL URL/path where server will be accessed from
+	 * @param port port to run sludge server
+	 * @param _rootDir location of root file dir
+	 * @param dbPath location of database for server
+	 * @param _fileURL URL/path where files will be accessed from
+	 */
 	constructor(
 		private _publicURL: URL,
 		private port: number,
@@ -62,13 +66,12 @@ implements
 		this.streamHandler = new StreamHandler( this, this.dbAPI, this.random )
 
 		this.uploadHandler = new UploadFormHandler( this, this.dbAPI, this.random )
-
-		this.encoder = new TextEncoder()
-
-		this.decoder = new TextDecoder()
 	}
 
-	// return public path for upload/ UI/ public stream
+	/**
+	 * return public path for upload/ UI/ public stream
+	 * @param stream Object containing public and admin IDs for a given stream
+	 */
 	private getStreamData( stream: Stream ): UserStreamData
 	{
 		return {
@@ -77,21 +80,14 @@ implements
 		}
 	}
 
+	/**
+	 * Server should close and close DB connection on end
+	 */
 	private close()
 	{
 		this.db.close()
 
 		this.server.close()
-	}
-
-	public encodeText( text: string ): Uint8Array
-	{
-		return this.encoder.encode( text )
-	}
-
-	public decodeText( binary: Uint8Array ): string
-	{
-		return this.decoder.decode( binary )
 	}
 
 	public async run(): Promise<void>

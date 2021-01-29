@@ -52,7 +52,7 @@ export class UploadFormHandler
 		const formFile: FormFile | FormFile[] | undefined = form?.files.audio
 
 		// form data isn't valid/usable, exit
-		if ( !formFile || Array.isArray( formFile ) || !formFile.content )
+		if ( !formFile || Array.isArray( formFile ) || !formFile.content || formFile.content.byteLength > 4000 )
 		{
 			throw Error( `Bad upload` )
 		}
