@@ -1,87 +1,120 @@
-# sludge &bull; web audio streams
+# sludge - live audio streaming server
 
-experimental live streaming server
+![Schwarzheide, VEB Synthesewerk, Klärschlamm](https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Bundesarchiv_Bild_183-1990-0109-012%2C_Schwarzheide%2C_VEB_Synthesewerk%2C_Kl%C3%A4rschlamm.jpg/173px-Bundesarchiv_Bild_183-1990-0109-012%2C_Schwarzheide%2C_VEB_Synthesewerk%2C_Kl%C3%A4rschlamm.jpg)
 
-## Summary
+Create streaming endpoints to receive compressed audio segments from [splutter](https://github.com/gaxge/sludge) and serve them for decoding and playback by [syllid](https://github.com/gaxge/syllid).
 
-This project is a component of [\_noisecrypt](low.show/noisecrypt/). The component acts as the streaming server where recorded audio is live streamed to, and then served from to be consumed by a compatible system. Streams are created via the sludge UI (or API) and can be added to a [sortition](https://github.com/lowshow/sortition) hub using the same UI. The recording/encoding interface is part of the [splutter](https://github.com/lowshow/splutter) component. The decoding/playback interface is part of the [syllid](https://github.com/lowshow/syllid) component.
+## What does it do?
 
-### Component communication
+Runs a deno server (offering systemd service and nginx proxy) that provides an API for generating "endpoints" for sending audio segments to and retrieving them again. It just helps distribute "live" audio recordings in very simple way.
 
--   sludge communicates information to splutter via local storage, due to shared root domain
--   sortition hub urls are copied into "add hub" section of the sludge admin UI
+## What problem does this solve?
 
-## Install
+### General
 
--   Download [deno](https://deno.land/) (tested with v1.1.0)
+Because this server doesn't currently discriminate the _type_ of file being uploaded and served (that's up to any client interacting with the API), this server allows you to store and distribute segments of sequential data. This specific kind of server isn't too common, so hopefully it can help with building streaming servers.
 
-## Setup
+### Non-general
 
-### UI
+This project is meant to be the server-side of the gaxge platform, where the client side records segments of audio, encodes them and sends them to this server for re-distribution. The segments can be retrieved in upload-order (that is, uploading out of order results in out of order data), for decoding and playback, so an audio stream can be recorded and listened to live by many listeners.
 
--   Add env data for the UI, in a file at: `ui/public/env.js`
+## How does it do this?
 
-```javascript
-export const env = () => ({
-    mode: "live",
-    streamUI: "https://some.url/splutter"
-})
-```
+The deno server receives a request to create a new "stream endpoint", which will create an admin URL and public URL. The admin URL is meant to be kept private and is used to send audio segments to. The nginx server then caches serves these files via the public URL, which is meant to be shared (as it can only be used to retrieve segment URLs and segment files).
 
-### API
+## How to use it?
 
--   Before running, ensure files and directories exist:
+Get instructions for interating with system
 
 ```shell
-make init
+make help
 ```
 
-NOTE: You will need to provide values for these variables
-
-**Nginx port**
-
-This is the port from which the nginx proxy server for sludge will run
-
-**Service hostname**
-
-This is the base URL hostname where sludge will be accessed
-
-**Additional hostnames**
-
-More hostnames (not required)
-
-**Sludge port**
-
-Port to run the sludge deno app
-
-**Public url**
-
-The URL (including any paths, without trailing slash) where sludge app is accessed
-
-**Files url**
-
-Base URL (including any paths, **with** trailing slash) where audio file segments are accessed
-
-**Splutter url**
-
-Full URL for the splutter app associated with this sludge instance (they must belong on the same domain)
-
-### Dev
-
-#### Server
-
--   Pass environment variables and run:
+or
 
 ```shell
-SLUDGE_PUBLIC="http://some.url/" SLUDGE_FILES="http://some.url/audio/" SLUDGE_PORT="8000" make run
+deno run --unstable src/sludge.ts --help
 ```
 
-NOTE: trailing slash should be included at the end of the URLs
+Use flags outlined in --help or use makefile commands:
 
-#### UI
+### Make for local dev
+
+#### Set up config/nginx (runs as sudo on linux)
 
 ```shell
-cd ui
-npm i
-npm run dev
+NGINX_HOST=localhost NGINX_PORT=7777 SLUDGE_PORT=7778 SLUDGE_CACHE=30 SLUDGE_DIR="<some dir>" make config-dev
 ```
+
+#### Run sludge server
+
+```shell
+# NOTE: trailing slash should be included at the end of the URLs
+SLUDGE_FILES="http://localhost:7777/audio/" SLUDGE_PUBLIC="http://localhost:7778/" SLUDGE_PORT="7778" SLUDGE_DIR="<some dir>" make run
+```
+
+### Make to test config output
+
+```shell
+NGINX_HOST=localhost NGINX_PORT=7777 SLUDGE_PORT=7778 SLUDGE_CACHE=30 SLUDGE_DIR="<some dir>" make tester
+```
+
+### Testing local endpoints
+
+[cURL](https://curl.se/) can be used to test the request and response structure of the endpoints:
+
+Create Stream endpoint
+
+```shell
+curl -X POST http://localhost:7777/stream
+```
+
+Get admin URLs
+
+```shell
+curl http://localhost:7777/<stream admin ID>/admin
+```
+
+Get segment IDs
+
+```shell
+curl http://localhost:7777/<stream public ID>
+```
+
+Post segment file
+
+```shell
+curl -F 'audio=@<path to project>/test-upload.opus' http://localhost:7777/<stream admin ID>
+```
+
+Get list of segment files
+```shell
+# Segments from start
+curl http://localhost:7777/<stream public ID>
+
+# Segments from random
+curl http://localhost:7777/<stream public ID>/random
+
+# Segments latest
+curl http://localhost:7777/<stream public ID>/latest
+
+# Segments after segment
+curl http://localhost:7777/<stream public ID>/<segment ID>
+```
+
+Get segment file
+```shell
+http://localhost:7777/audio/<stream public ID>/<segment ID>.opus
+```
+
+## What are the upcoming features or known issues?
+
+This information is managed in the [issues](https://github.com/gaxge/sludge/issues) section of this repository. You are encouraged to submit tickets here if you have any problems or questions related to this project.
+
+## How to contribute?
+
+There's no official guidelines for contributing at the moment. Feel free to create a pull request for any changes you would like to make and we can discuss it. If your code is merged you'll receive a mention on this README.
+
+## What's the license?
+
+See the [license](https://github.com/gaxge/sludge/blob/master/LICENSE.md) file.

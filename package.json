@@ -1,0 +1,30 @@
+{
+	"name": "sludge",
+	"description": "experimental live streaming server",
+	"version": "1.0.0",
+	"main": "src/sludge.ts",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"lint": "eslint . --ext .js,.ts",
+		"lint:fix": "eslint . --ext .js,.ts --fix"
+	},
+	"author": {
+		"name": "DROHEN",
+		"url": "https://github.com/drohen",
+		"email": "email@drohen.com"
+	},
+	"bugs": {
+		"email": "email@drohen.com",
+		"url": "https://github.com/gaxge/sludge/issues"
+	},
+	"repository": {
+		"url": "https://github.com/gaxge/sludge.git"
+	},
+	"homepage": "https://github.com/gaxge/sludge",
+	"license": "MIT",
+	"devDependencies": {
+		"@typescript-eslint/eslint-plugin": "^4.2.0",
+		"@typescript-eslint/parser": "^4.2.0",
+		"eslint": "^7.9.0"
+	}
+}
