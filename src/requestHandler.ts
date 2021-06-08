@@ -33,9 +33,22 @@ export interface RequestsActionsProvider
 	processUploadFormData: ( request: ServerRequest, streamAdminID: string ) => Promise<string>
 }
 
+enum Method
+{
+	GET = `GET`,
+	POST = `POST`,
+	OPTIONS = `OPTIONS`
+}
+
+type MethodHandlerFn = ( req: ServerRequest ) => Promise<Response>
+
 export class RequestHandler
 {
 	private encoder: TextEncoder
+
+	private methodHandler: Record<Method, MethodHandlerFn>
+
+	private validMethods: string[]
 
 	constructor(
 		private action: RequestsActionsProvider,
@@ -43,8 +56,31 @@ export class RequestHandler
 		private uuid: RequestsUUIDProvider
 	)
 	{
-
 		this.encoder = new TextEncoder()
+
+		this.validMethods = Object.keys( Method )
+
+		this.methodHandler = {
+			[ Method.GET ]: async ( req: ServerRequest ) =>
+				await this.get( req ),
+			[ Method.POST ]: async ( req: ServerRequest ) =>
+				await this.post( req ),
+			[ Method.OPTIONS ]: async () =>
+				( { status: 200 } )
+		}
+	}
+
+	private isMethod( method: string ): method is Method
+	{
+		return this.validMethods.includes( method )
+	}
+
+	private invalidRequest()
+	{
+		return {
+			body: this.encode( `This is not a valid request.` ),
+			status: 400
+		}
 	}
 
 	/**
@@ -53,6 +89,16 @@ export class RequestHandler
 	private encode( text: string ): Uint8Array
 	{
 		return this.encoder.encode( text )
+	}
+
+	private getStartValueFromQuery( url: URL ): string
+	{
+		return url.searchParams.get( `start` ) ?? ``
+	}
+
+	private url( path: string ): URL
+	{
+		return new URL( path, `http://0.0.0.0` )
 	}
 
 	/**
@@ -65,46 +111,36 @@ export class RequestHandler
 	private async post( req: ServerRequest ): Promise<Response> 
 	{
 		const path: string[] = req.url.split( `/` )
-
-		try 
+		
+		if ( path[ 1 ] === `stream` ) 
 		{
-			if ( path[ 1 ] === `stream` ) 
-			{
-				// create stream id
+			// create stream id
 
-				const headers = new Headers()
+			const headers = new Headers()
 
-				headers.set( `content-type`, `application/json` )
+			headers.set( `content-type`, `application/json` )
 
-				return {
-					body: this.encode(
-						JSON.stringify( await this.action.createStream() )
-					),
-					status: 200,
-					headers
-				}
-			}
-
-			if ( !this.uuid.validateUUID( path[ 1 ] ) ) 
-			{
-				throw Error( `Invalid path` )
-			}
-
-			// /<stream admin id>
-			// post adds file
-			// need to match uuid in KV
-			// aka handleform
-			const url = await this.action.processUploadFormData( req, path[ 1 ] )
-
-			return { body: this.encode( url ), status: 200 }
-		}
-		catch ( e ) 
-		{
 			return {
-				body: this.encode( e.message ),
-				status: 404
+				body: this.encode(
+					JSON.stringify( await this.action.createStream() )
+				),
+				status: 200,
+				headers
 			}
 		}
+
+		if ( !this.uuid.validateUUID( path[ 1 ] ) ) 
+		{
+			throw Error( `Invalid path` )
+		}
+
+		// /<stream admin id>
+		// post adds file
+		// need to match uuid in KV
+		// aka handleform
+		const url = await this.action.processUploadFormData( req, path[ 1 ] )
+
+		return { body: this.encode( url ), status: 200 }
 	}
 
 	/**
@@ -122,67 +158,87 @@ export class RequestHandler
 	 */
 	private async get( req: ServerRequest ): Promise<Response> 
 	{
-		const path: string[] = req.url.split( `/` )
+		const url = this.url( req.url )
 
+		const path: string[] = url.pathname.split( `/` )
+
+		if ( !this.uuid.validateUUID( path[ 1 ] ) ) 
+		{
+			throw Error( `Invalid path` )
+		}
+
+		const headers = new Headers()
+
+		headers.set( `content-type`, `application/json` )
+
+		/**
+		 * path[2] might be
+		 * 	- admin
+		 * 	- random
+		 * 	- latest
+		 * 	- ID
+		 * 	- none
+		 * 	- some unknown value
+		 * If none, we also check if there's a query value named
+		 * "start" which should be one of admin, random or latest
+		 */
+		const start = path[ 2 ] || this.getStartValueFromQuery( url )
+
+		switch( start )
+		{
+			case `admin`:
+				// /<stream admin id>/admin
+				return {
+					body: this.encode( JSON.stringify( await this.action.fetchStream( path[ 1 ] ) ) ),
+					status: 200,
+					headers
+				}
+
+			case `random`:
+				// return playlist from random
+				// /<stream public id>/random
+				return {
+					body: this.encode( JSON.stringify( await this.data.getSegmentList(
+						path[ 1 ],
+						undefined,
+						StreamStart.random
+					) ) ),
+					status: 200,
+					headers
+				}
+
+			case `latest`:
+				// return playlist latest segments
+				// /<stream public id>/latest
+				return {
+					body: this.encode( JSON.stringify( await this.data.getSegmentList(
+						path[ 1 ],
+						undefined,
+						StreamStart.latest
+					) ) ),
+					status: 200,
+					headers
+				}
+
+			default:
+				// return playlist from segment or start
+				// /<stream public id>/<segment?>
+				return {
+					body: this.encode( JSON.stringify( await this.data.getSegmentList(
+						path[ 1 ],
+						this.uuid.validateUUID( path[ 2 ] ) ? path[ 2 ] : undefined
+					) ) ),
+					status: 200,
+					headers
+				}
+		}
+	}
+
+	private async callHandlerOrError( req: ServerRequest, fn?: MethodHandlerFn ): Promise<Response>
+	{
 		try
 		{
-			if ( !this.uuid.validateUUID( path[ 1 ] ) ) 
-			{
-				throw Error( `Invalid path` )
-			}
-
-			const headers = new Headers()
-
-			headers.set( `content-type`, `application/json` )
-
-			switch( path[ 2 ] )
-			{
-				case `admin`:
-					// /<stream admin id>/admin
-					return {
-						body: this.encode( JSON.stringify( await this.action.fetchStream( path[ 1 ] ) ) ),
-						status: 200,
-						headers
-					}
-	
-				case `random`:
-					// return playlist from random
-					// /<stream public id>/random
-					return {
-						body: this.encode( JSON.stringify( await this.data.getSegmentList(
-							path[ 1 ],
-							undefined,
-							StreamStart.random
-						) ) ),
-						status: 200,
-						headers
-					}
-
-				case `latest`:
-					// return playlist latest segments
-					// /<stream public id>/latest
-					return {
-						body: this.encode( JSON.stringify( await this.data.getSegmentList(
-							path[ 1 ],
-							undefined,
-							StreamStart.latest
-						) ) ),
-						status: 200,
-						headers
-					}
-
-				default:
-					// return playlist from segment or start
-					// /<stream public id>/<segment?>
-					return {
-						body: this.encode( JSON.stringify( await this.data.getSegmentList(
-							path[ 1 ],
-							this.uuid.validateUUID( path[ 2 ] ) ? path[ 2 ] : undefined
-						) ) ),
-						status: 200,
-						headers
-					}
-			}
+			return await fn?.( req ) ?? this.invalidRequest()
 		}
 		catch ( e ) 
 		{
@@ -203,23 +259,11 @@ export class RequestHandler
 	// let nginx return audio files from dir
 	private async selectMethod( req: ServerRequest )
 	{
-		switch ( req.method ) 
-		{
-			case `GET`:
-				return await this.get( req )
-	
-			case `POST`:
-				return await this.post( req )
-	
-			case `OPTIONS`:
-				return { status: 200 }
-	
-			default:
-				return {
-					body: this.encode( `This is not a valid request.` ),
-					status: 400
-				}
-		}
+		const { method } = req
+
+		if ( !this.isMethod( method ) ) return this.invalidRequest()
+
+		return await this.callHandlerOrError( req, this.methodHandler[ method ] )
 	}
 
 	/**
