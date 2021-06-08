@@ -53,7 +53,7 @@ implements
 		private _fileURL: URL
 	)
 	{
-		this.random = new Random()
+		this.random = new Random( 20 )
 
 		this.db = new sqlite.DB( this.dbPath )
 

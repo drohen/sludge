@@ -30,7 +30,5 @@
 		"node_modules",
 		"*.json",
 		".github",
-		"templates",
-		"ui"
 	]
 }

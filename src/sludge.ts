@@ -97,7 +97,7 @@ class Sludge
 				? `production`
 				: `development`
 
-		const random = new Random( undefined, 0 )
+		const random = new Random( 20, 0 )
 
 		const nginxPort = parseInt( flags.nginx )
 
