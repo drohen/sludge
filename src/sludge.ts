@@ -72,7 +72,7 @@ class Sludge
 	 */
 	private async configure( flags: Args )
 	{
-		const reqArgs: string[] = [ `nginx`, `host`, `port`, `cache`, `dir` ]
+		const reqArgs: string[] = [ `nginx`, `host`, `port`, `cache`, `dir`, `files`, `public` ]
 
 		const flagKeys: string[] = Object.keys( flags )
 
@@ -114,13 +114,6 @@ class Sludge
 		}
 
 		const rootDir: string = flags.dir
-
-		const audioDir: string = path.join( rootDir, `audio` )
-
-		if ( !await fs.exists( audioDir ) ) 
-		{
-			await Deno.mkdir( audioDir, { recursive: true } )
-		}
 
 		const cache = parseInt( flags.cache, 10 )
 
@@ -169,6 +162,13 @@ class Sludge
 		}
 
 		const rootDir: string = flags.dir
+
+		const audioDir: string = path.join( rootDir, `audio` )
+
+		if ( !await fs.exists( audioDir ) )
+		{
+			await Deno.mkdir( audioDir, { recursive: true } )
+		}
 
 		// use db file for sqlite db
 		const dbPath: string = path.join( rootDir, `db` )
