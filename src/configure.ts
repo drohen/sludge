@@ -66,7 +66,8 @@ const serviceTemplate = (
 	projectPath: string,
 	filesURL: string,
 	publicURL: string,
-	sludgePort: number
+	sludgePort: number,
+	sludgeDir: string
 ) => `[Unit]
 Description=sludge server
 After=network.target
@@ -78,6 +79,7 @@ WorkingDirectory=${projectPath}
 Environment="SLUDGE_FILES=${filesURL}"
 Environment="SLUDGE_PUBLIC=${publicURL}"
 Environment="SLUDGE_PORT=${sludgePort}"
+Environment="SLUDGE_DIR=${sludgeDir}"
 ExecStart=/usr/bin/make run
 Restart=on-failure
 
@@ -271,7 +273,8 @@ export class Configure
 				Deno.cwd(),
 				this.filesURL.toString(),
 				this.publicURL.toString(),
-				this.sludgePort
+				this.sludgePort,
+				this.rootFilePath
 			) )
 
 		const p0 = Deno.run( { cmd: [ `sudo`, `systemctl`, `start`, `sludge_server`  ] } )
