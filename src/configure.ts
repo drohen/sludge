@@ -107,6 +107,7 @@ export class Configure
 	 * @param rootFilePath path to where files are stored on the machine
 	 * @param cacheAgeDays length in days to preserve audio file cache
 	 * @param nginxConfFileName file name to save the nginx config file under
+	 * @param serviceFileName file name to save the systemd file under
 	 * @param filesURL URL/path where the audio files will be accessed
 	 * @param publicURL URL/path where the app will be accessed
 	 */
@@ -119,6 +120,7 @@ export class Configure
 		private rootFilePath: string,
 		cacheAgeDays: number,
 		nginxConfFileName = `sludge_nginx.conf`,
+		serviceFileName = `sludge_server.service`,
 		private filesURL?: URL,
 		private publicURL?: URL
 	)
@@ -129,7 +131,7 @@ export class Configure
 				? join( `/etc/nginx/sites-enabled`, nginxConfFileName )
 				: join( `/usr/local/etc/nginx/servers`, nginxConfFileName )
 
-		this.servicePath = `/etc/systemd/system/sludge_server.service`
+		this.servicePath = `/etc/systemd/system/${serviceFileName}`
 
 		this.segmentFileRegex = `${this.regexStr}\\.opus`
 

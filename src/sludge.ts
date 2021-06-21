@@ -134,7 +134,8 @@ class Sludge
 			port,
 			rootDir,
 			cache,
-			flags.name,
+			flags.conf,
+			flags.service,
 			fileURL,
 			publicURL
 		)
