@@ -119,19 +119,19 @@ export class Configure
 		private sludgePort: number,
 		private rootFilePath: string,
 		cacheAgeDays: number,
-		nginxConfFileName = `sludge_nginx.conf`,
-		serviceFileName = `sludge_server.service`,
+		nginxConfFileName = `sludge_nginx`,
+		private serviceFileName = `sludge_server`,
 		private filesURL?: URL,
 		private publicURL?: URL
 	)
 	{
 		this.nginxPath = this.environment === `test`
-			? join( rootFilePath, nginxConfFileName )
+			? join( rootFilePath, `${nginxConfFileName}.conf` )
 			: Deno.build.os === `linux`
-				? join( `/etc/nginx/sites-enabled`, nginxConfFileName )
-				: join( `/usr/local/etc/nginx/servers`, nginxConfFileName )
+				? join( `/etc/nginx/sites-enabled`, `${nginxConfFileName}.conf` )
+				: join( `/usr/local/etc/nginx/servers`, `${nginxConfFileName}.conf` )
 
-		this.servicePath = `/etc/systemd/system/${serviceFileName}`
+		this.servicePath = `/etc/systemd/system/${this.serviceFileName}.service`
 
 		this.segmentFileRegex = `${this.regexStr}\\.opus`
 
@@ -279,7 +279,7 @@ export class Configure
 				this.rootFilePath
 			) )
 
-		const p0 = Deno.run( { cmd: [ `sudo`, `systemctl`, `start`, `sludge_server`  ] } )
+		const p0 = Deno.run( { cmd: [ `sudo`, `systemctl`, `start`, this.serviceFileName ] } )
 
 		const { code: code0 } = await p0.status()
 
@@ -290,7 +290,7 @@ export class Configure
 
 		p0.close()
 
-		const p1 = Deno.run( { cmd: [ `sudo`, `systemctl`, `enable`, `sludge_server`  ] } )
+		const p1 = Deno.run( { cmd: [ `sudo`, `systemctl`, `enable`, this.serviceFileName ] } )
 
 		const { code: code1 } = await p1.status()
 
