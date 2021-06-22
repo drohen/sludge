@@ -9,6 +9,9 @@ ARGS0=--dir="$(SLUDGE_DIR)" --port="$(SLUDGE_PORT)"
 ARGS1=--files="$(SLUDGE_FILES)"
 ARGS2=--public="$(SLUDGE_PUBLIC)"
 SERVE_ARGS=$(ARGS0) $(ARGS1) $(ARGS2)
+NGINX_CONF?="sludge_nginx"
+SERVICE_FILE?="sludge_server"
+NAME_ARGS=--conf=$(NGINX_CONF) --service=$(SERVICE_FILE)
 CONFIG_ARGS=--configure $(ARGS0) --host="$(NGINX_HOST)" --nginx="$(NGINX_PORT)" --cache="$(SLUDGE_CACHE)"
 TEST_ARGS=--test $(CONFIG_ARGS)
 OS := $(shell uname)
@@ -51,4 +54,4 @@ config-prod:
 	test $(SLUDGE_PORT)
 	test $(SLUDGE_CACHE)
 	test $(SLUDGE_DIR)
-	sudo $(HOME)/.deno/bin/deno run $(PERM_PROD) src/sludge.ts $(CONFIG_ARGS) $(ARGS1) $(ARGS2) --production
+	sudo $(HOME)/.deno/bin/deno run $(PERM_PROD) src/sludge.ts $(CONFIG_ARGS) $(ARGS1) $(ARGS2) $(NAME_ARGS) --production

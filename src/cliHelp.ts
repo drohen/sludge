@@ -30,9 +30,9 @@ Arguments:
 	
 	--cache="<days>"		Number of days to cache audio files, e.g. 30
 	
-	--conf="<file name>"		Name of nginx configuration file, default is sludge_nginx.conf
+	--conf="<file name>"		Name of nginx configuration file, default is sludge_nginx
 	
-	--service="<file name>"		Name of service file, default is sludge_server.service
+	--service="<file name>"		Name of service file, default is sludge_server
 	
 	--help				Show this information screen
 `
