@@ -249,7 +249,7 @@ export class Configure
 
 		await this.restartService( `linux` )
 
-		const user = Deno.env.get( `USER` )
+		const user = Deno.env.get( `SUDO_USER` ) ?? Deno.env.get( `USER` )
 
 		if ( !user )
 		{
