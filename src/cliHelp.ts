@@ -33,6 +33,11 @@ Arguments:
 	--conf="<file name>"		Name of nginx configuration file, default is sludge_nginx
 	
 	--service="<file name>"		Name of service file, default is sludge_server
+
+	--idLength="<number>"		Length of ID to use for stream IDs, e.g. 10
+
+	--idAlphabet="<chars>"		Characters to use in ID for stream IDs,
+					e.g. 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz-
 	
 	--help				Show this information screen
 `
