@@ -3,7 +3,6 @@ import * as path from "https://deno.land/std/path/mod.ts"
 import * as fs from "https://deno.land/std/fs/mod.ts"
 import { parse, Args } from "https://deno.land/std/flags/mod.ts"
 import { Configure } from "./configure.ts"
-import { Random } from "./random.ts"
 import { cli } from "./cliHelp.ts"
 
 
@@ -77,9 +76,7 @@ class Sludge
 			`host`,
 			`port`,
 			`cache`,
-			`dir`,
-			`idLength`,
-			`idAlphabet` ]
+			`dir` ]
 
 		const flagKeys: string[] = Object.keys( flags )
 
@@ -102,7 +99,7 @@ class Sludge
 			? `test`
 			: flags.production
 				? `production`
-				: `development`		
+				: `development`
 
 		const idLength = flags.idLength ? parseInt( flags.idLength, 10 ) : undefined
 

@@ -35,7 +35,7 @@ export class Random implements RandomProvider
 
 		this.cursor = 0
 
-		this.uuidRegexStr = `[${this.alphabet}]{10,}`
+		this.uuidRegexStr = `[a-zA-Z0-9_-]{10,}`
 
 		this.uuidRegex = new RegExp( `^${this.uuidRegexStr}$` )
 
@@ -110,10 +110,5 @@ export class Random implements RandomProvider
 	public async uuid(): Promise<string>
 	{
 		return this.nanoid()
-	}
-
-	public regexStr(): string
-	{
-		return this.uuidRegexStr
 	}
 }

@@ -56,7 +56,7 @@ implements
 		idAlphabet: string
 	)
 	{
-		this.random = new Random( idLength, idAlphabet, undefined )
+		this.random = new Random( idLength, idAlphabet )
 
 		this.db = new sqlite.DB( this.dbPath )
 
