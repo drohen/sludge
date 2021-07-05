@@ -27,7 +27,9 @@ export class DBInterface implements DataProvider
 
 	private streamSelect: string
 
-	private selecteLatest: string
+	private selectLatest: string
+
+	private segmentCount: Record<string, number>
 
 	constructor(
 		private db: sqlite.DB,
@@ -42,10 +44,12 @@ export class DBInterface implements DataProvider
 			`WHERE streamPublicID = $streamPublicID AND rowid > (SELECT rowid FROM segments WHERE segmentID = $segmentID) LIMIT 10;`
 		].join( ` ` )
 
-		this.selecteLatest = [
+		this.selectLatest = [
 			`SELECT * FROM (SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE`,
 			`streamPublicID = $streamPublicID ORDER BY rowid DESC LIMIT 10) ORDER BY rowid ASC;`
 		].join( ` ` )
+
+		this.segmentCount = {}
 
 		this.init()
 	}
@@ -149,7 +153,7 @@ export class DBInterface implements DataProvider
 	 */
 	private async getStreamsSegmentsRandom( streamPublicID: string )
 	{
-		const count = this.streamSegmentsCount( streamPublicID )
+		const count = this.streamCount( streamPublicID )
 
 		if ( !count ) 
 		{
@@ -194,7 +198,7 @@ export class DBInterface implements DataProvider
 		try 
 		{
 			return this.db.query(
-				this.selecteLatest,
+				this.selectLatest,
 				{
 					$streamPublicID: streamPublicID
 				}
@@ -413,5 +417,30 @@ export class DBInterface implements DataProvider
 		}
 
 		return stream.publicID
+	}
+
+	public streamCount( streamPublicID: string ): number
+	{
+		if ( this.segmentCount[ streamPublicID ] === undefined )
+		{
+			this.segmentCount[ streamPublicID ] = this.streamSegmentsCount( streamPublicID )
+		}
+		
+		return this.segmentCount[ streamPublicID ]
+	}
+
+	/**
+	 * Get the next segment ID for a stream
+	 * @param streamPublicID 
+	 */
+	public nextSegmentID( streamPublicID: string ): string
+	{
+		const count = this.streamCount( streamPublicID )
+
+		const id = `${count}`.padStart( 8, `0` )
+		
+		this.segmentCount[ streamPublicID ] = count + 1
+
+		return id
 	}
 }

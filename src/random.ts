@@ -1,4 +1,4 @@
-import { nanoid } from "https://deno.land/x/nanoid/async.ts"
+import { customAlphabet } from "https://deno.land/x/nanoid/mod.ts"
 import type { RandomProvider } from "./core.ts"
 
 export class Random implements RandomProvider
@@ -13,6 +13,8 @@ export class Random implements RandomProvider
 
 	private uuidRegexStr: string
 
+	private nanoid: () => string
+
 	/**
 	 * Provider for randomness, generator of IDs and validation
 	 * @param idLength Length of the id used for segments, streams
@@ -23,18 +25,23 @@ export class Random implements RandomProvider
 		// security is less important
 		// but 10 chars should be enough
 		private idLength: number = 10,
+		private alphabet: string = `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz-`,
 		private randomStoreSize: number = 16384
 	)
 	{
+		if ( this.idLength < 10 ) throw Error( `ID min length is 10` )
+
 		this.randomStore = new Uint32Array( this.randomStoreSize )
 
 		this.cursor = 0
 
-		this.uuidRegexStr = `[A-Za-z0-9-_]{${this.idLength}}`
+		this.uuidRegexStr = `[a-zA-Z0-9_-]{10,}`
 
 		this.uuidRegex = new RegExp( `^${this.uuidRegexStr}$` )
 
 		this.storeState = `ready`
+
+		this.nanoid = customAlphabet( this.alphabet, this.idLength )
 
 		this.updateStore()
 	}
@@ -102,11 +109,6 @@ export class Random implements RandomProvider
 
 	public async uuid(): Promise<string>
 	{
-		return await nanoid( this.idLength )
-	}
-
-	public regexStr(): string
-	{
-		return this.uuidRegexStr
+		return this.nanoid()
 	}
 }

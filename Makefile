@@ -8,7 +8,8 @@ PERM_PROD=$(PERM0) --allow-write="$(SLUDGE_DIR),/etc/systemd/system,/etc/nginx/s
 ARGS0=--dir="$(SLUDGE_DIR)" --port="$(SLUDGE_PORT)"
 ARGS1=--files="$(SLUDGE_FILES)"
 ARGS2=--public="$(SLUDGE_PUBLIC)"
-SERVE_ARGS=$(ARGS0) $(ARGS1) $(ARGS2)
+ID_ARGS=--idLength="$(ID_LENGTH)" --idAlphabet="$(ID_ALPHABET)"
+SERVE_ARGS=$(ARGS0) $(ARGS1) $(ARGS2) $(ID_ARGS)
 NGINX_CONF?="sludge_nginx"
 SERVICE_FILE?="sludge_server"
 NAME_ARGS=--conf=$(NGINX_CONF) --service=$(SERVICE_FILE)
@@ -18,6 +19,7 @@ OS := $(shell uname)
 is_darwin :=$(filter Darwin,$(OS))
 CONFIG_DEV_CMD_LINUX=sudo $(HOME)/.deno/bin/deno run $(PERM_LINUX) src/sludge.ts $(CONFIG_ARGS)
 CONFIG_DEV_CMD_OSX=$(HOME)/.deno/bin/deno run $(PERM_OSX) src/sludge.ts $(CONFIG_ARGS)
+PROD_ARGS=$(CONFIG_ARGS) $(ARGS1) $(ARGS2) $(NAME_ARGS) $(ID_ARGS) --production
 
 
 run:
@@ -25,6 +27,8 @@ run:
 	test $(SLUDGE_PUBLIC)
 	test $(SLUDGE_PORT)
 	test $(SLUDGE_DIR)
+	test $(ID_ALPHABET)
+	test $(ID_LENGTH)
 	$(HOME)/.deno/bin/deno run $(PERM) src/sludge.ts $(SERVE_ARGS)
 
 help:
@@ -44,6 +48,8 @@ config-dev:
 	test $(SLUDGE_PORT)
 	test $(SLUDGE_CACHE)
 	test $(SLUDGE_DIR)
+	test $(ID_ALPHABET)
+	test $(ID_LENGTH)
 	$(if $(is_darwin), $(CONFIG_DEV_CMD_OSX), $(CONFIG_DEV_CMD_LINUX))
 
 config-prod:
@@ -54,4 +60,6 @@ config-prod:
 	test $(SLUDGE_PORT)
 	test $(SLUDGE_CACHE)
 	test $(SLUDGE_DIR)
-	sudo $(HOME)/.deno/bin/deno run $(PERM_PROD) src/sludge.ts $(CONFIG_ARGS) $(ARGS1) $(ARGS2) $(NAME_ARGS) --production
+	test $(ID_ALPHABET)
+	test $(ID_LENGTH)
+	sudo $(HOME)/.deno/bin/deno run $(PERM_PROD) src/sludge.ts $(PROD_ARGS)

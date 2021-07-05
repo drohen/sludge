@@ -3,12 +3,11 @@ import * as sqlite from "https://deno.land/x/sqlite/mod.ts"
 import { DBInterface, DBActionsProvider } from "./db.ts"
 import { RequestHandler, RequestsActionsProvider, RequestsDataProvider, RequestsUUIDProvider, UserStreamData } from "./requestHandler.ts"
 import { StreamHandler, StreamCoreProvider, StreamDataProvider, StreamUUIDProvider, Stream } from "./streamHandler.ts"
-import { UploadCoreProvider, UploadDataProvider, UploadFormHandler, UploadRandomProvider } from "./uploadFormHandler.ts"
+import { UploadCoreProvider, UploadDataProvider, UploadFormHandler } from "./uploadFormHandler.ts"
 import { Random } from "./random.ts"
 
 export type RandomProvider = 
 	& DBActionsProvider
-	& UploadRandomProvider
 	& RequestsUUIDProvider
 	& StreamUUIDProvider
 
@@ -44,16 +43,20 @@ implements
 	 * @param _rootDir location of root file dir
 	 * @param dbPath location of database for server
 	 * @param _fileURL URL/path where files will be accessed from
+	 * @param idLength Length of ID
+	 * @param idAlphabet Alphabet for ID
 	 */
 	constructor(
 		private _publicURL: URL,
 		private port: number,
 		private _rootDir: string,
 		private dbPath: string,
-		private _fileURL: URL
+		private _fileURL: URL,
+		idLength: number,
+		idAlphabet: string
 	)
 	{
-		this.random = new Random( 20 )
+		this.random = new Random( idLength, idAlphabet )
 
 		this.db = new sqlite.DB( this.dbPath )
 
@@ -65,7 +68,7 @@ implements
 
 		this.streamHandler = new StreamHandler( this, this.dbAPI, this.random )
 
-		this.uploadHandler = new UploadFormHandler( this, this.dbAPI, this.random )
+		this.uploadHandler = new UploadFormHandler( this, this.dbAPI )
 	}
 
 	/**

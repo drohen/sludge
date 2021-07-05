@@ -4,14 +4,11 @@ import { multiParser, Form, FormFile } from 'https://deno.land/x/multiparser@v2.
 
 export interface UploadDataProvider
 {
+	nextSegmentID: ( streamPublicID: string ) => string
+
 	addSegmentURL: ( segmentID: string, streamPublicID: string, segmentURL: URL ) => Promise<void>
 
 	getStreamPublicIDFromStreamAdminID: ( streamAdminID: string ) => Promise<string>
-}
-
-export interface UploadRandomProvider
-{
-	uuid: () => Promise<string>
 }
 
 export interface UploadCoreProvider
@@ -25,8 +22,7 @@ export class UploadFormHandler
 {
 	constructor(
 		private core: UploadCoreProvider,
-		private data: UploadDataProvider,
-		private random: UploadRandomProvider
+		private data: UploadDataProvider
 	)
 	{}
 
@@ -57,7 +53,7 @@ export class UploadFormHandler
 			throw Error( `Bad upload` )
 		}
 
-		const segmentID = await this.random.uuid()
+		const segmentID = this.data.nextSegmentID( streamPublicID )
 
 		const fileLocation = join( streamPublicID, `${segmentID}.opus` )
 

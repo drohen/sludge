@@ -3,9 +3,7 @@ import { join } from "https://deno.land/std/path/mod.ts"
 const nginxTemplate = (
 	port: number, 
 	serverName: string, 
-	sludgePort: number, 
-	streamIDRegex: string, 
-	segmentFileRegex: string,
+	sludgePort: number,
 	cacheAgeSeconds: number,
 	rootFilePath: string
 ) => `server
@@ -21,7 +19,7 @@ const nginxTemplate = (
 
 	# adminID/publicID path handling (multipart form post segment, playlist get)
 
-	location ~ "^/${streamIDRegex}" 
+	location ~ "^/[a-zA-Z0-9_-]{10,}" 
 	{
 		proxy_pass			http://127.0.0.1:${sludgePort};
 
@@ -45,7 +43,7 @@ const nginxTemplate = (
 
 	# audio files
     
-	location ~ "^/audio/(${streamIDRegex})/(${segmentFileRegex})$" 
+	location ~ "^/audio/([a-zA-Z0-9_-]{10,})/([a-zA-Z0-9_-]{1,}\\.opus)$" 
 	{
 		add_header 			'Access-Control-Allow-Origin' '*';
 
@@ -67,7 +65,9 @@ const serviceTemplate = (
 	filesURL: string,
 	publicURL: string,
 	sludgePort: number,
-	sludgeDir: string
+	sludgeDir: string,
+	idLength: number,
+	idAlphabet: string
 ) => `[Unit]
 Description=sludge server
 After=network.target
@@ -80,6 +80,8 @@ Environment="SLUDGE_FILES=${filesURL}"
 Environment="SLUDGE_PUBLIC=${publicURL}"
 Environment="SLUDGE_PORT=${sludgePort}"
 Environment="SLUDGE_DIR=${sludgeDir}"
+Environment="ID_LENGTH=${idLength}"
+Environment="ID_ALPHABET=${idAlphabet}"
 ExecStart=/usr/bin/make run
 Restart=on-failure
 
@@ -90,8 +92,6 @@ export class Configure
 {
 	private nginxPath: string
 
-	private segmentFileRegex: string
-
 	private cacheAgeSeconds: number
 
 	private servicePath: string
@@ -100,11 +100,12 @@ export class Configure
 	 * Builds and outputs the configuration files to serve the app
 	 * 
 	 * @param environment indicate to output config file (test), run locally (development) or deploy (production)
-	 * @param regexStr string to validate file/stream URLs
 	 * @param nginxPort port to run and access nginx server
 	 * @param serverName IP/domain to access nginx server
 	 * @param sludgePort port where sludge server will be run
 	 * @param rootFilePath path to where files are stored on the machine
+	 * @param idLength number of chars in the ID
+	 * @param idAlphabet characters to be used in the ID
 	 * @param cacheAgeDays length in days to preserve audio file cache
 	 * @param nginxConfFileName file name to save the nginx config file under
 	 * @param serviceFileName file name to save the systemd file under
@@ -113,12 +114,13 @@ export class Configure
 	 */
 	constructor(
 		private environment: `test` | `development` | `production` = `development`,
-		private regexStr: string,
 		private nginxPort: number,
 		private serverName: string,
 		private sludgePort: number,
 		private rootFilePath: string,
 		cacheAgeDays: number,
+		private idLength?: number,
+		private idAlphabet?: string,
 		nginxConfFileName = `sludge_nginx`,
 		private serviceFileName = `sludge_server`,
 		private filesURL?: URL,
@@ -133,8 +135,6 @@ export class Configure
 
 		this.servicePath = `/etc/systemd/system/${this.serviceFileName}.service`
 
-		this.segmentFileRegex = `${this.regexStr}\\.opus`
-
 		this.cacheAgeSeconds = cacheAgeDays * 24 * 60 * 60
 	}
 
@@ -144,18 +144,18 @@ export class Configure
 	private async test()
 	{
 		console.log( `Writing file to`, this.nginxPath )
+
+		const nginx = nginxTemplate(
+			this.nginxPort,
+			this.serverName,
+			this.sludgePort,
+			this.cacheAgeSeconds,
+			this.rootFilePath
+		)
 		
-		await Deno.writeTextFile( 
-			this.nginxPath, 
-			nginxTemplate(
-				this.nginxPort,
-				this.serverName,
-				this.sludgePort,
-				this.regexStr,
-				this.segmentFileRegex,
-				this.cacheAgeSeconds,
-				this.rootFilePath
-			) )
+		await Deno.writeTextFile( this.nginxPath, nginx )
+
+		console.log( nginx )
 	}
 
 	/**
@@ -192,13 +192,10 @@ export class Configure
 			this.nginxPort,
 			this.serverName,
 			this.sludgePort,
-			this.regexStr,
-			this.segmentFileRegex,
 			this.cacheAgeSeconds,
 			this.rootFilePath
 		)
 		
-
 		switch ( Deno.build.os )
 		{
 			case `darwin`:
@@ -241,8 +238,6 @@ export class Configure
 				this.nginxPort,
 				this.serverName,
 				this.sludgePort,
-				this.regexStr,
-				this.segmentFileRegex,
 				this.cacheAgeSeconds,
 				this.rootFilePath
 			) )
@@ -266,6 +261,16 @@ export class Configure
 			throw Error( `Public URL required for production.` )
 		}
 
+		if ( !this.idLength )
+		{
+			throw Error( `ID length required for production.` )
+		}
+
+		if ( !this.idAlphabet )
+		{
+			throw Error( `ID Alphabet required for production.` )
+		}
+
 		console.log( `Writing file to`, this.servicePath )
 		
 		await Deno.writeTextFile( 
@@ -276,7 +281,9 @@ export class Configure
 				this.filesURL.toString(),
 				this.publicURL.toString(),
 				this.sludgePort,
-				this.rootFilePath
+				this.rootFilePath,
+				this.idLength,
+				this.idAlphabet
 			) )
 
 		const p0 = Deno.run( { cmd: [ `sudo`, `systemctl`, `start`, this.serviceFileName ] } )

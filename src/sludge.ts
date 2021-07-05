@@ -3,7 +3,6 @@ import * as path from "https://deno.land/std/path/mod.ts"
 import * as fs from "https://deno.land/std/fs/mod.ts"
 import { parse, Args } from "https://deno.land/std/flags/mod.ts"
 import { Configure } from "./configure.ts"
-import { Random } from "./random.ts"
 import { cli } from "./cliHelp.ts"
 
 
@@ -72,7 +71,12 @@ class Sludge
 	 */
 	private async configure( flags: Args )
 	{
-		const reqArgs: string[] = [ `nginx`, `host`, `port`, `cache`, `dir`, `files`, `public` ]
+		const reqArgs: string[] = [
+			`nginx`,
+			`host`,
+			`port`,
+			`cache`,
+			`dir` ]
 
 		const flagKeys: string[] = Object.keys( flags )
 
@@ -97,7 +101,12 @@ class Sludge
 				? `production`
 				: `development`
 
-		const random = new Random( 20, 0 )
+		const idLength = flags.idLength ? parseInt( flags.idLength, 10 ) : undefined
+
+		if ( idLength !== undefined && isNaN( idLength ) )
+		{
+			throw Error( `ID Length ${idLength} is not a number.` )
+		}
 
 		const nginxPort = parseInt( flags.nginx )
 
@@ -125,15 +134,51 @@ class Sludge
 		const publicURL = flags.public ? this.validateURL( flags.public ) : undefined
 
 		const fileURL = flags.files ? this.validateURL( flags.files ) : undefined
+
+		if ( environment === `production` )
+		{
+			let fail = false
+
+			if ( !publicURL )
+			{
+				console.log( `Missing arg: public, required for production` )
+
+				fail = true
+			}
+
+			if ( !fileURL )
+			{
+				console.log( `Missing arg: files, required for production` )
+
+				fail = true
+			}
+
+			if ( !idLength )
+			{
+				console.log( `Missing arg: idLength, required for production` )
+
+				fail = true
+			}
+
+			if ( !flags.idAlphabet )
+			{
+				console.log( `Missing arg: idAlphabet, required for production` )
+
+				fail = true
+			}
+
+			if ( fail ) throw Error()
+		}
 		
 		this.config = new Configure(
 			environment,
-			random.regexStr(),
 			nginxPort,
 			flags.host,
 			port,
 			rootDir,
 			cache,
+			idLength,
+			flags.idAlphabet,
 			flags.conf,
 			flags.service,
 			fileURL,
@@ -143,7 +188,13 @@ class Sludge
 
 	private async server( flags: Args )
 	{
-		const reqArgs: string[] = [ `dir`, `port`, `public`, `files` ]
+		const reqArgs: string[] = [
+			`dir`,
+			`port`,
+			`public`,
+			`files`,
+			`idLength`,
+			`idAlphabet` ]
 
 		const flagKeys: string[] = Object.keys( flags )
 
@@ -190,12 +241,21 @@ class Sludge
 			throw Error( `Port ${port} is not a number.` )
 		}
 
+		const idLength = parseInt( flags.idLength, 10 )
+
+		if ( isNaN( idLength ) )
+		{
+			throw Error( `ID Length ${idLength} is not a number.` )
+		}
+
 		this.core = new Core(
 			publicURL,
 			port,
 			rootDir,
 			dbPath,
-			fileURL
+			fileURL,
+			idLength,
+			flags.idAlphabet
 		)
 	}
 
