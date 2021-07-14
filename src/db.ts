@@ -41,7 +41,9 @@ export class DBInterface implements DataProvider
 		// This is here simply to reduce line length
 		this.streamSelect = [
 			`SELECT segmentID, streamPublicID, segmentURL FROM segments`,
-			`WHERE streamPublicID = $streamPublicID AND rowid > (SELECT rowid FROM segments WHERE segmentID = $segmentID) LIMIT 10;`
+			`WHERE streamPublicID = $streamPublicID AND rowid >`,
+			`(SELECT rowid FROM segments WHERE segmentID = $segmentID AND streamPublicID = $streamPublicID)`,
+			`LIMIT 10;`
 		].join( ` ` )
 
 		this.selectLatest = [
