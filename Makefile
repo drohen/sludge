@@ -48,8 +48,6 @@ config-dev:
 	test $(SLUDGE_PORT)
 	test $(SLUDGE_CACHE)
 	test $(SLUDGE_DIR)
-	test $(ID_ALPHABET)
-	test $(ID_LENGTH)
 	$(if $(is_darwin), $(CONFIG_DEV_CMD_OSX), $(CONFIG_DEV_CMD_LINUX))
 
 config-prod:
