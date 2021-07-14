@@ -8,7 +8,6 @@ import { Random } from "./random.ts"
 
 export type RandomProvider = 
 	& DBActionsProvider
-	& RequestsUUIDProvider
 	& StreamUUIDProvider
 
 export type DataProvider = 
@@ -64,7 +63,14 @@ implements
 
 		this.server = serve( `0.0.0.0:${this.port}` )
 
-		this.requestHandler = new RequestHandler( this, this.dbAPI, this.random )
+		this.requestHandler = new RequestHandler( this, this.dbAPI, {
+			validateUUID: uuid => this.random.validateUUID( uuid ),
+			validateSegmentUUID: uuid =>
+			{
+				return ( uuid.length >= 8 && !isNaN( parseInt( uuid ) ) )
+					|| this.random.validateUUID( uuid )
+			}
+		} )
 
 		this.streamHandler = new StreamHandler( this, this.dbAPI, this.random )
 

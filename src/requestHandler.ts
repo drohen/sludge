@@ -22,6 +22,8 @@ export interface RequestsDataProvider
 export interface RequestsUUIDProvider
 {
 	validateUUID: ( uuid: string ) => boolean
+
+	validateSegmentUUID: ( uuid: string ) => boolean
 }
 
 export interface RequestsActionsProvider
@@ -226,7 +228,7 @@ export class RequestHandler
 				return {
 					body: this.encode( JSON.stringify( await this.data.getSegmentList(
 						path[ 1 ],
-						this.uuid.validateUUID( path[ 2 ] ) ? path[ 2 ] : undefined
+						this.uuid.validateSegmentUUID( path[ 2 ] ) ? path[ 2 ] : undefined
 					) ) ),
 					status: 200,
 					headers
