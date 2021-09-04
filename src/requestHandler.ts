@@ -16,7 +16,9 @@ export interface Segment
 
 export interface RequestsDataProvider
 {
-	getSegmentList: ( streamPublicID: string, segmentID?: string, type?: StreamStart ) => Promise<Segment[]>
+	getSegmentList: ( streamPublicID: string, segmentID?: string, position?: number, type?: StreamStart ) => Promise<Segment[]>
+
+	getStreamLength: ( streamPublicID: string ) => number
 }
 
 export interface RequestsUUIDProvider
@@ -98,6 +100,18 @@ export class RequestHandler
 		return url.searchParams.get( `start` ) ?? ``
 	}
 
+	private getRequestValueFromQuery( url: URL ): string
+	{
+		return url.searchParams.get( `request` ) ?? ``
+	}
+
+	private getPositionValueFromQuery( url: URL ): number
+	{
+		const num = parseInt( url.searchParams.get( `position` ) ?? `0` )
+		
+		return isNaN( num ) ? 0 : num
+	}
+
 	private url( path: string ): URL
 	{
 		return new URL( path, `http://0.0.0.0` )
@@ -150,6 +164,8 @@ export class RequestHandler
 	 *
 	 * `/<stream admin id>/admin` -> fetch stream info
 	 *
+	 * `/<stream public id>/length` -> fetch stream length
+	 *
 	 * `/<stream public id>` -> fetch stream playlist from start
 	 *
 	 * `/<stream public id>/random` -> fetch stream playlist at random point
@@ -157,6 +173,8 @@ export class RequestHandler
 	 * `/<stream public id>/latest` -> fetch stream playlist latest segments
 	 *
 	 * `/<stream public id>/<segment id>` -> fetch stream playlist after segment
+	 *
+	 * `/<stream public id>/position?position=<number>` -> fetch stream playlist after segment
 	 */
 	private async get( req: ServerRequest ): Promise<Response> 
 	{
@@ -179,12 +197,17 @@ export class RequestHandler
 		 * 	- random
 		 * 	- latest
 		 * 	- ID
+		 * 	- position
+		 * 	- length
 		 * 	- none
 		 * 	- some unknown value
-		 * If none, we also check if there's a query value named
-		 * "start" which should be one of admin, random or latest
+		 * If none, we also check if there's a query value named:
+		 * - "start" which should be one of random or latest
+		 * - "request" which should be one of admin or length
 		 */
-		const start = path[ 2 ] || this.getStartValueFromQuery( url )
+		const start = path[ 2 ]
+			|| this.getStartValueFromQuery( url )
+			|| this.getRequestValueFromQuery( url )
 
 		switch( start )
 		{
@@ -203,6 +226,7 @@ export class RequestHandler
 					body: this.encode( JSON.stringify( await this.data.getSegmentList(
 						path[ 1 ],
 						undefined,
+						undefined,
 						StreamStart.random
 					) ) ),
 					status: 200,
@@ -216,7 +240,32 @@ export class RequestHandler
 					body: this.encode( JSON.stringify( await this.data.getSegmentList(
 						path[ 1 ],
 						undefined,
+						undefined,
 						StreamStart.latest
+					) ) ),
+					status: 200,
+					headers
+				}
+
+			case `length`:
+				// return playlist length
+				// /<stream public id>/length
+				return {
+					body: this.encode( JSON.stringify( { length: this.data.getStreamLength(
+						path[ 1 ]
+					) } ) ),
+					status: 200,
+					headers
+				}
+
+			case `position`:
+				// return playlist length
+				// /<stream public id>/position?position=<number>
+				return {
+					body: this.encode( JSON.stringify( await this.data.getSegmentList(
+						path[ 1 ],
+						undefined,
+						this.getPositionValueFromQuery( url )
 					) ) ),
 					status: 200,
 					headers

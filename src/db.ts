@@ -25,11 +25,15 @@ export class DBInterface implements DataProvider
 {
 	private emptyList: []
 
-	private streamSelect: string
+	private streamSelectByID: string
+
+	private streamSelectByOffset: string
 
 	private selectLatest: string
 
 	private segmentCount: Record<string, number>
+
+	public getStreamLength: ( streamPublicID: string ) => number
 
 	constructor(
 		private db: sqlite.DB,
@@ -39,19 +43,28 @@ export class DBInterface implements DataProvider
 		this.emptyList = []
 
 		// This is here simply to reduce line length
-		this.streamSelect = [
+		this.streamSelectByID = [
 			`SELECT segmentID, streamPublicID, segmentURL FROM segments`,
 			`WHERE streamPublicID = $streamPublicID AND rowid >`,
 			`(SELECT rowid FROM segments WHERE segmentID = $segmentID AND streamPublicID = $streamPublicID)`,
 			`LIMIT 10;`
 		].join( ` ` )
 
+		// This is here simply to reduce line length
+		this.streamSelectByOffset = [
+			`SELECT segmentID, streamPublicID, segmentURL FROM segments`,
+			`WHERE streamPublicID = $streamPublicID`,
+			`LIMIT 10 OFFSET $offset;`
+		].join( ` ` )
+
 		this.selectLatest = [
-			`SELECT * FROM (SELECT segmentID, streamPublicID, segmentURL FROM segments WHERE`,
+			`SELECT segmentID, streamPublicID, segmentURL FROM (SELECT rowid, * FROM segments WHERE`,
 			`streamPublicID = $streamPublicID ORDER BY rowid DESC LIMIT 10) ORDER BY rowid ASC;`
 		].join( ` ` )
 
 		this.segmentCount = {}
+
+		this.getStreamLength = this.streamCount
 
 		this.init()
 	}
@@ -122,9 +135,48 @@ export class DBInterface implements DataProvider
 		try 
 		{
 			const rows = this.db.query(
-				this.streamSelect,
+				this.streamSelectByID,
 				{
 					$segmentID: segmentID,
+					$streamPublicID: streamPublicID
+				}
+			)
+	
+			for ( const row of rows ) 
+			{
+				if ( row ) 
+				{
+					const [ segmentID, streamPublicID, segmentURL ] = row
+	
+					segments.push( { segmentID, streamPublicID, segmentURL } )
+				}
+			}
+	
+			return segments
+		}
+		catch ( e )
+		{
+			console.error( e )
+
+			throw Error( `Could not get segments for stream.` )
+		}
+	}
+
+	/**
+	 * Return up to 10 segments following the provided segment ID
+	 * @param streamPublicID 
+	 * @param segmentID 
+	 */
+	private getStreamSegmentsByOffset( streamPublicID: string, offset: number )
+	{
+		const segments: Segment[] = []
+
+		try 
+		{
+			const rows = this.db.query(
+				this.streamSelectByOffset,
+				{
+					$offset: offset,
 					$streamPublicID: streamPublicID
 				}
 			)
@@ -197,6 +249,13 @@ export class DBInterface implements DataProvider
 	 */
 	private async getStreamsSegmentsLatest( streamPublicID: string )
 	{
+		const count = this.streamCount( streamPublicID )
+
+		if ( !count || count < 10 ) 
+		{
+			return this.emptyList
+		}
+
 		try 
 		{
 			return this.db.query(
@@ -289,12 +348,16 @@ export class DBInterface implements DataProvider
 	 * @param segmentID 
 	 * @param type random, start, latest
 	 */
-	public async getSegmentList( streamPublicID: string, segmentID?: string, type: StreamStart = StreamStart.start ): Promise<Segment[]>
+	public async getSegmentList( streamPublicID: string, segmentID?: string, offset?: number, type: StreamStart = StreamStart.start ): Promise<Segment[]>
 	{
 		if ( segmentID ) 
 		{
 			// if segment id, return all after segment ID
 			return this.getStreamSegmentsByID( streamPublicID, segmentID )
+		}
+		else if ( offset )
+		{
+			return this.getStreamSegmentsByOffset( streamPublicID, offset )
 		}
 		else 
 		{
